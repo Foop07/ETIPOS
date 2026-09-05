@@ -5,7 +5,7 @@
 
 ---
 
-## 🚀 Overview
+## Overview
 
 ETIPOS is an air-gapped secure file transfer and messaging protocol designed for high-security environments. It mitigates the privacy and grid/energy footprint risks of centralized cloud data centers by conducting in-flight static decompilation, local SLM threat scoring (Ollama / CyberSecEval), and post-quantum / AEAD encryption across a strictly local 3-node topology.
 
@@ -31,7 +31,7 @@ graph LR
 
 ---
 
-## 🔬 Research Foundations
+## Research Foundations
 
 1. **Ephemeral Key Exchange**: Bernstein (2006) *Curve25519: new Diffie-Hellman speed records* (RFC 7748) & Diffie-Hellman (1976).
 2. **Chunk Confidentiality & AEAD**: Rogaway (2002) *Authenticated-Encryption with Associated Data (AEAD)* (NIST SP 800-38D).
@@ -42,7 +42,7 @@ graph LR
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 ETIPOS/
@@ -82,7 +82,7 @@ ETIPOS/
 
 ---
 
-## ⚡ Quickstart
+## Quickstart
 
 ### 1. Run Automated Test Suite
 ```bash
@@ -100,18 +100,18 @@ Open your browser at `http://localhost:8000` to interact with the real-time Gate
 
 ---
 
-## 🧪 Verified Test Results
+## Verified Test Results
 
 All 12 unit & integration test suites passed:
-- `test_x25519_key_exchange_and_derivation` ✅
-- `test_aes_gcm_chunk_encryption_decryption` ✅
-- `test_chunker_and_reassembly_multichunk` ✅
-- `test_ed25519_gateway_signature_verification` ✅
-- `test_handshake_and_chunked_upload_flow` ✅
-- `test_direct_inspect_blocked_malware` ✅
-- `test_stats_endpoint` ✅
-- `test_optical_burst_generation_and_reconstruction` ✅
-- `test_optical_burst_missing_frame_error` ✅
-- `test_malicious_apk_detection` ✅
-- `test_benign_apk_clean_pass` ✅
-- `test_prompt_injection_in_text_payload` ✅
+- `test_x25519_key_exchange_and_derivation` 
+- `test_aes_gcm_chunk_encryption_decryption` 
+- `test_chunker_and_reassembly_multichunk` 
+- `test_ed25519_gateway_signature_verification` 
+- `test_handshake_and_chunked_upload_flow` 
+- `test_direct_inspect_blocked_malware` 
+- `test_stats_endpoint` 
+- `test_optical_burst_generation_and_reconstruction` 
+- `test_optical_burst_missing_frame_error` 
+- `test_malicious_apk_detection` 
+- `test_benign_apk_clean_pass` 
+- `test_prompt_injection_in_text_payload` 
