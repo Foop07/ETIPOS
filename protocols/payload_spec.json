@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ETIPOS Protocol Specification v1.0",
+  "description": "Encrypted Tunnels In Phones Obviously Secured (ETIPOS) Protocol Schemas",
+  "version": "1.0.0",
+  "ciphersuites": {
+    "key_exchange": "X25519 (RFC 7748)",
+    "kdf": "HKDF-SHA256 (RFC 5869)",
+    "symmetric_encryption": "AES-256-GCM (NIST SP 800-38D)",
+    "integrity_mac": "HMAC-SHA256",
+    "signature": "Ed25519 (RFC 8032)",
+    "post_quantum_hybrid": "Kyber-768 / X25519"
+  },
+  "message_types": {
+    "HANDSHAKE_INIT": 1,
+    "HANDSHAKE_RESPONSE": 2,
+    "PAYLOAD_MANIFEST": 3,
+    "PAYLOAD_CHUNK": 4,
+    "PAYLOAD_ACK": 5,
+    "INSPECTION_REPORT": 6,
+    "AIRGAP_BURST_FRAME": 7,
+    "ENCLAVE_RELEASE": 8
+  },
+  "schemas": {
+    "HandshakeInit": {
+      "type": "object",
+      "properties": {
+        "protocol_version": { "type": "string", "default": "1.0.0" },
+        "session_id": { "type": "string" },
+        "sender_id": { "type": "string" },
+        "client_ephemeral_public_key": { "type": "string", "description": "Base64-encoded X25519 public key" },
+        "timestamp": { "type": "integer" },
+        "nonce": { "type": "string", "description": "Base64 12-byte random IV" }
+      },
+      "required": ["protocol_version", "session_id", "sender_id", "client_ephemeral_public_key", "timestamp"]
+    },
+    "PayloadManifest": {
+      "type": "object",
+      "properties": {
+        "session_id": { "type": "string" },
+        "payload_id": { "type": "string" },
+        "payload_type": { "type": "string", "enum": ["FILE_APK", "FILE_GENERIC", "TEXT_MESSAGE", "STRUCTURED_DATA"] },
+        "filename": { "type": "string" },
+        "total_size_bytes": { "type": "integer" },
+        "total_chunks": { "type": "integer" },
+        "chunk_size_bytes": { "type": "integer", "default": 32768 },
+        "sha256_hash": { "type": "string" },
+        "mime_type": { "type": "string" }
+      },
+      "required": ["session_id", "payload_id", "payload_type", "total_size_bytes", "total_chunks", "sha256_hash"]
+    },
+    "PayloadChunk": {
+      "type": "object",
+      "properties": {
+        "session_id": { "type": "string" },
+        "payload_id": { "type": "string" },
+        "chunk_index": { "type": "integer" },
+        "total_chunks": { "type": "integer" },
+        "ciphertext": { "type": "string", "description": "Base64 AES-256-GCM ciphertext" },
+        "nonce": { "type": "string", "description": "Base64 12-byte IV" },
+        "auth_tag": { "type": "string", "description": "Base64 16-byte GCM authentication tag" },
+        "hmac_sha256": { "type": "string", "description": "Base64 HMAC integrity verification" }
+      },
+      "required": ["session_id", "payload_id", "chunk_index", "ciphertext", "nonce", "auth_tag"]
+    },
+    "ThreatInspectionReport": {
+      "type": "object",
+      "properties": {
+        "payload_id": { "type": "string" },
+        "filename": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "sha256": { "type": "string" },
+        "static_analysis": {
+          "type": "object",
+          "properties": {
+            "is_apk": { "type": "boolean" },
+            "package_name": { "type": "string" },
+            "dangerous_permissions": { "type": "array", "items": { "type": "string" } },
+            "suspicious_apis": { "type": "array", "items": { "type": "string" } },
+            "dynamic_loading_detected": { "type": "boolean" },
+            "hardcoded_endpoints": { "type": "array", "items": { "type": "string" } },
+            "taint_flows": { "type": "array", "items": { "type": "object" } },
+            "static_threat_score": { "type": "number", "minimum": 0.0, "maximum": 10.0 }
+          }
+        },
+        "ai_analysis": {
+          "type": "object",
+          "properties": {
+            "model_used": { "type": "string" },
+            "malware_intent_score": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+            "data_exfiltration_score": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+            "prompt_injection_score": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+            "cyberseceval_findings": { "type": "array", "items": { "type": "string" } },
+            "reasoning_summary": { "type": "string" }
+          }
+        },
+        "composite_risk_score": { "type": "number", "minimum": 0.0, "maximum": 10.0 },
+        "verdict": { "type": "string", "enum": ["PASS", "QUARANTINE", "BLOCK"] },
+        "gateway_signature": { "type": "string", "description": "Base64 Ed25519 signature by Gateway" }
+      },
+      "required": ["payload_id", "timestamp", "composite_risk_score", "verdict", "gateway_signature"]
+    },
+    "OpticalBurstFrame": {
+      "type": "object",
+      "properties": {
+        "protocol": { "type": "string", "default": "ETIPOS-OPTICAL-1.0" },
+        "payload_id": { "type": "string" },
+        "frame_index": { "type": "integer" },
+        "total_frames": { "type": "integer" },
+        "checksum": { "type": "string", "description": "CRC32 or short hash of frame payload" },
+        "data_chunk": { "type": "string", "description": "Base64 or ASCII encoded data segment" }
+      },
+      "required": ["payload_id", "frame_index", "total_frames", "checksum", "data_chunk"]
+    }
+  }
+}
+
