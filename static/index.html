@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ETIPOS | Secure Local Relay</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #121826;
+      --card-border: #1e293b;
+      --accent: #06b6d4;
+      --accent-glow: rgba(6, 182, 212, 0.25);
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+    .header {
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0 20px 0;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: 0.5px;
+    }
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .container {
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--card);
+      border-radius: 12px;
+      padding: 4px;
+      border: 1px solid var(--card-border);
+    }
+    .tab-btn {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: #04131d;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+    .upload-zone {
+      border: 2px dashed #334155;
+      border-radius: 14px;
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(15, 23, 42, 0.4);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(6, 182, 212, 0.05);
+    }
+    .upload-icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+    }
+    .file-input {
+      display: none;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #04131d;
+    }
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+    .pin-input-container {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .pin-input {
+      width: 100%;
+      font-size: 2rem;
+      letter-spacing: 8px;
+      text-align: center;
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      color: var(--accent);
+      padding: 12px;
+      font-weight: 700;
+    }
+    .pin-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+    /* Radar Scanning Stages */
+    .scan-status {
+      display: none;
+      margin-top: 16px;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+    .stage-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .stage-item:last-child { margin-bottom: 0; }
+    .stage-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #475569;
+    }
+    .stage-item.running .stage-dot {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 1s infinite alternate;
+    }
+    .stage-item.done .stage-dot {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+    .stage-item.done { color: var(--text); }
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+    /* Transfer Success Panel */
+    .result-panel {
+      display: none;
+      text-align: center;
+    }
+    .pin-display {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: 6px;
+      margin: 12px 0;
+      text-shadow: 0 0 15px var(--accent-glow);
+    }
+    .qr-box {
+      margin: 16px auto;
+      padding: 12px;
+      background: white;
+      border-radius: 12px;
+      width: 200px;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .meta-box {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.82rem;
+      text-align: left;
+      margin-top: 14px;
+      border: 1px solid var(--card-border);
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .meta-row:last-child { margin-bottom: 0; }
+    .meta-label { color: var(--text-muted); }
+    .meta-val { color: var(--text); font-weight: 600; }
+    .alert-box {
+      display: none;
+      padding: 14px;
+      border-radius: 10px;
+      margin-top: 14px;
+      font-size: 0.9rem;
+    }
+    .alert-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+    }
+    .alert-success {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--success);
+      color: #6ee7b7;
+    }
+    .countdown {
+      font-size: 0.8rem;
+      color: var(--warning);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      ETIPOS Fortress Relay
+    </div>
+    <div class="status-badge" id="healthBadge">
+      ● 3-Tier Guard Online
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-btn active" id="tabSend" onclick="switchTab('send')">📤 Send File</button>
+      <button class="tab-btn" id="tabRecv" onclick="switchTab('recv')">📥 Receive File</button>
+    </div>
+
+    <!-- SENDER VIEW -->
+    <div class="card" id="sendCard">
+      <div id="uploadContainer">
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">📁</div>
+          <h3 id="uploadPrompt">Tap to Select File</h3>
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">
+            Encrypted in-transit & analyzed locally
+          </p>
+          <input type="file" id="fileInput" class="file-input" onchange="handleFileSelect(event)" />
+        </div>
+
+        <button class="btn btn-primary" id="btnUpload" style="display:none" onclick="startSecureUpload()">
+          Scan & Transfer Wirelessly
+        </button>
+      </div>
+
+      <!-- Scanning Radar Progress -->
+      <div class="scan-status" id="scanStatus">
+        <div class="stage-item running" id="stage1">
+          <div class="stage-dot"></div>
+          <span>Tier 1: Disguise & Magic Header Check</span>
+        </div>
+        <div class="stage-item" id="stage2">
+          <div class="stage-dot"></div>
+          <span>Tier 2: ClamAV & Shannon Entropy Scan</span>
+        </div>
+        <div class="stage-item" id="stage3">
+          <div class="stage-dot"></div>
+          <span>Tier 3: Local AI Specialist Triage (Qwen 2.5)</span>
+        </div>
+      </div>
+
+      <!-- Error / Block Alert -->
+      <div class="alert-box alert-danger" id="blockAlert"></div>
+
+      <!-- Success Result Panel -->
+      <div class="result-panel" id="resultPanel">
+        <p style="color: var(--success); font-weight: 600; font-size: 0.95rem;">
+          Verified Safe & Ready for Relay
+        </p>
+        <div class="pin-display" id="pinDisplay">------</div>
+        <p style="font-size: 0.8rem; color: var(--text-muted);">
+          Scan QR with Phone B or enter 6-digit PIN:
+        </p>
+        <div class="qr-box">
+          <img id="qrImg" src="" alt="Transfer QR Code" />
+        </div>
+        <div class="countdown" id="countdownTimer">
+          Auto-destructs in 5m 00s
+        </div>
+        <div class="meta-box" id="metaBox"></div>
+        <button class="btn btn-primary" style="margin-top:14px; background:#334155; color:white;" onclick="resetSender()">
+          Send Another File
+        </button>
+      </div>
+    </div>
+
+    <!-- RECEIVER VIEW -->
+    <div class="card" id="recvCard" style="display:none">
+      <h3 style="margin-bottom: 6px;">Retrieve Payload</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Enter the 6-digit PIN to download the verified file.
+      </p>
+
+      <div class="pin-input-container">
+        <input type="tel" maxlength="6" class="pin-input" id="recvPin" placeholder="••••••" />
+      </div>
+
+      <button class="btn btn-primary" id="btnDownload" onclick="downloadPayload()">
+        Download & Auto-Shred
+      </button>
+
+      <div class="alert-box alert-success" id="recvSuccess">
+        Payload downloaded successfully. Ephemeral copy instantly shredded from server memory.
+      </div>
+      <div class="alert-box alert-danger" id="recvError"></div>
+    </div>
+  </div>
+
+  <script>
+    let selectedFile = null;
+    let countdownInterval = null;
+
+    // Check query params for prefilled PIN from QR code
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const pinParam = urlParams.get('pin');
+      if (pinParam) {
+        switchTab('recv');
+        document.getElementById('recvPin').value = pinParam;
+      }
+    });
+
+    function switchTab(tab) {
+      document.getElementById('tabSend').classList.toggle('active', tab === 'send');
+      document.getElementById('tabRecv').classList.toggle('active', tab === 'recv');
+      document.getElementById('sendCard').style.display = tab === 'send' ? 'block' : 'none';
+      document.getElementById('recvCard').style.display = tab === 'recv' ? 'block' : 'none';
+    }
+
+    function handleFileSelect(e) {
+      if (e.target.files.length > 0) {
+        selectedFile = e.target.files[0];
+        document.getElementById('uploadPrompt').innerText = selectedFile.name;
+        document.getElementById('btnUpload').style.display = 'flex';
+      }
+    }
+
+    async function startSecureUpload() {
+      if (!selectedFile) return;
+
+      const btn = document.getElementById('btnUpload');
+      btn.disabled = true;
+      btn.innerText = "Analyzing Payload...";
+
+      document.getElementById('scanStatus').style.display = 'block';
+      document.getElementById('blockAlert').style.display = 'none';
+      document.getElementById('resultPanel').style.display = 'none';
+
+      const s1 = document.getElementById('stage1');
+      const s2 = document.getElementById('stage2');
+      const s3 = document.getElementById('stage3');
+
+      s1.className = 'stage-item running';
+      s2.className = 'stage-item';
+      s3.className = 'stage-item';
+
+      setTimeout(() => { s1.className = 'stage-item done'; s2.className = 'stage-item running'; }, 600);
+      setTimeout(() => { s2.className = 'stage-item done'; s3.className = 'stage-item running'; }, 1200);
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      try {
+        const response = await fetch('/transfer', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        s3.className = 'stage-item done';
+
+        if (!response.ok) {
+          showBlockAlert(data.detail?.message || "File flagged as malicious.", data.detail?.reason || "Security policy violation.");
+          btn.disabled = false;
+          btn.innerText = "Scan & Transfer Wirelessly";
+          return;
+        }
+
+        // Show Result
+        document.getElementById('uploadContainer').style.display = 'none';
+        document.getElementById('scanStatus').style.display = 'none';
+        document.getElementById('resultPanel').style.display = 'block';
+        document.getElementById('pinDisplay').innerText = data.pin;
+        document.getElementById('qrImg').src = `/qr/${data.pin}`;
+
+        const metaBox = document.getElementById('metaBox');
+        metaBox.innerHTML = `
+          <div class="meta-row"><span class="meta-label">File:</span><span class="meta-val">${data.filename}</span></div>
+          <div class="meta-row"><span class="meta-label">Detected Type:</span><span class="meta-val">${data.triage?.file_info?.actual_type || 'Verified'}</span></div>
+          <div class="meta-row"><span class="meta-label">Size:</span><span class="meta-val">${(data.size_bytes / 1024).toFixed(1)} KB</span></div>
+          <div class="meta-row"><span class="meta-label">Entropy:</span><span class="meta-val">${data.triage?.entropy || 'Normal'}</span></div>
+          <div class="meta-row"><span class="meta-label">Antivirus:</span><span class="meta-val" style="color:var(--success)">${data.triage?.clamav_status || 'Clean'}</span></div>
+        `;
+
+        startCountdown(data.expires_in_seconds || 300);
+
+      } catch (err) {
+        showBlockAlert("Network Error", "Unable to communicate with local fortress server.");
+        btn.disabled = false;
+        btn.innerText = "Scan & Transfer Wirelessly";
+      }
+    }
+
+    function showBlockAlert(title, reason) {
+      const el = document.getElementById('blockAlert');
+      el.innerHTML = `<strong>⚠️ ${title}</strong><br><span style="font-size:0.8rem">${reason}</span>`;
+      el.style.display = 'block';
+    }
+
+    function startCountdown(seconds) {
+      clearInterval(countdownInterval);
+      let rem = seconds;
+      countdownInterval = setInterval(() => {
+        rem--;
+        if (rem <= 0) {
+          clearInterval(countdownInterval);
+          document.getElementById('countdownTimer').innerText = "Expired & shredded.";
+        } else {
+          const m = Math.floor(rem / 60);
+          const s = rem % 60;
+          document.getElementById('countdownTimer').innerText = `Auto-destructs in ${m}m ${s < 10 ? '0' : ''}${s}s`;
+        }
+      }, 1000);
+    }
+
+    function resetSender() {
+      clearInterval(countdownInterval);
+      selectedFile = null;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('uploadPrompt').innerText = 'Tap to Select File';
+      document.getElementById('btnUpload').style.display = 'none';
+      document.getElementById('btnUpload').disabled = false;
+      document.getElementById('btnUpload').innerText = 'Scan & Transfer Wirelessly';
+      document.getElementById('uploadContainer').style.display = 'block';
+      document.getElementById('scanStatus').style.display = 'none';
+      document.getElementById('resultPanel').style.display = 'none';
+      document.getElementById('blockAlert').style.display = 'none';
+    }
+
+    async function downloadPayload() {
+      const pin = document.getElementById('recvPin').value.trim();
+      const errEl = document.getElementById('recvError');
+      const succEl = document.getElementById('recvSuccess');
+      errEl.style.display = 'none';
+      succEl.style.display = 'none';
+
+      if (!pin || pin.length !== 6) {
+        errEl.innerText = "Please enter a valid 6-digit PIN.";
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('btnDownload');
+      btn.disabled = true;
+      btn.innerText = "Retrieving Payload...";
+
+      try {
+        const response = await fetch(`/download/${pin}`);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.detail || "Invalid or expired PIN.");
+        }
+
+        // Get filename from header
+        let filename = "payload.bin";
+        const disposition = response.headers.get('Content-Disposition');
+        if (disposition && disposition.includes('filename=')) {
+          const match = disposition.match(/filename="?([^"]+)"?/);
+          if (match && match[1]) filename = match[1];
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        succEl.style.display = 'block';
+        document.getElementById('recvPin').value = '';
+      } catch (err) {
+        errEl.innerText = err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Download & Auto-Shred";
+      }
+    }
+  </script>
+</body>
+</html>
+
