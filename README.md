@@ -21,18 +21,9 @@ ETIPOS is an air-gapped secure file transfer and messaging protocol designed for
 
 ## Quickstart
 
-### 1. Run Automated Test Suite
+### 1. Launch Gateway Security Console (Node 2)
 ```bash
-python -m pytest tests/ -v
+python run.py
 ```
-
-### 2. Launch Gateway Security Console (Node 2)
-```bash
-python gateway_server/server.py
-```
-Open your browser at `http://localhost:8000` to interact with the real-time Gateway Security Console.
-- Drag and drop `.apk` files or enter encrypted text messages.
-- View real-time decompilation audits and local SLM CyberSecEval threat breakdowns.
-- Watch animated optical QR bursts transmitting across the physical screen to Phone B.
-- `test_benign_apk_clean_pass` 
-- `test_prompt_injection_in_text_payload` 
+Scan the QR code which will open a browser at `http://localhost:8000` to interact with the real-time Gateway Security Console.
+- Drag and drop files.
