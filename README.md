@@ -6,26 +6,6 @@
 
 ETIPOS is an air-gapped secure file transfer and messaging protocol designed for high-security environments. It mitigates the privacy and grid/energy footprint risks of centralized cloud data centers by conducting in-flight static decompilation, local SLM threat scoring (Ollama / CyberSecEval), and encryption across a strictly local 3-node topology.
 
-```mermaid
-graph LR
-    subgraph "Node 1: Phone A (Sender)"
-        A[Android Compose App] -->|X25519 + AES-256-GCM| B
-    end
-
-    subgraph "Node 2: Gateway Laptop (Inspection Gatekeeper)"
-        B[Ktor / FastAPI Server] --> C[Static Decompiler: FlowDroid / Androguard]
-        B --> D[Local SLM: Ollama CyberSecEval]
-        C & D --> E[Ed25519 Signed Audit Report]
-        E --> F[Optical QR Burst Stream / BLE]
-    end
-
-    subgraph "Node 3: Phone B (Receiver)"
-        F --> G[Optical Burst Scanner]
-        G --> H[Sandboxed Quarantine Enclave]
-        H --> I[Verified Secure Vault]
-    end
-```
-
 ---
 
 ## Research Foundations
