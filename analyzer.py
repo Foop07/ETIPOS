@@ -2,6 +2,13 @@ import io
 import math
 import json
 import re
+import struct
+import zipfile
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
+import lief
+import yara
+from PyPDF2 import PdfReader
 from typing import Dict, Any, Optional, Tuple
 import clamd
 from magika import Magika
@@ -94,6 +101,1302 @@ def calculate_entropy(data: bytes) -> float:
             entropy -= p * math.log2(p)
     return round(entropy, 3)
 
+def scan_yara(data: bytes) -> list[dict]:
+    """
+    Scan file contents using YARA rules.
+    Returns structured information about matched rules.
+    """
+    try:
+        rules_path = 'C:/Users/jaini/VSCODES/ETIPOS_Prototype/yara_rules'
+
+        rules = yara.compile(
+            filepaths={
+                "suspicious_rules": f"{rules_path}/suspicious_scripts.yar"
+            }
+        )
+
+        matches = rules.match(data=data)
+
+        results = []
+
+        for match in matches:
+            severity = "medium"
+
+            if match.rule == "Suspicious_Memory_Injection":
+                severity = "high"
+
+            results.append({
+                "rule": match.rule,
+                "severity": severity
+            })
+
+        return results
+
+    except Exception as e:
+        print(f"YARA scan error: {e}")
+        return []
+
+def analyze_pdf_static(data: bytes) -> dict:
+    """Inspect PDF metadata, actions, and URLs without assigning a verdict."""
+    result = {
+        "available": False,
+        "page_count": None,
+        "javascript": False,
+        "open_action": False,
+        "additional_actions": False,
+        "embedded_files": False,
+        "launch_actions": False,
+        "uri_actions": False,
+        "acroform": False,
+        "urls": [],
+        "indicators": [],
+    }
+
+    urls = []
+    visited = set()
+
+    def add_url(url: str) -> None:
+        url = url.strip()
+        if url and url not in urls:
+            urls.append(url)
+
+    def inspect_text(value: object) -> None:
+        try:
+            text = str(value)
+        except Exception:
+            return
+
+        for url in re.findall(
+            r"(?:https?|ftp)://[^\s<>\"']+",
+            text,
+            re.IGNORECASE,
+        ):
+            add_url(url.rstrip(".,;)]}"))
+
+    def resolve(value: object) -> object:
+        seen = set()
+
+        try:
+            while hasattr(value, "get_object"):
+                object_id = id(value)
+
+                if object_id in seen:
+                    return None
+
+                seen.add(object_id)
+                value = value.get_object()
+
+        except Exception:
+            return None
+
+        return value
+
+    def walk(value: object) -> None:
+        try:
+            if hasattr(value, "get_object"):
+                value = value.get_object()
+        except Exception:
+            return
+
+        object_id = id(value)
+        if object_id in visited:
+            return
+        visited.add(object_id)
+
+        inspect_text(value)
+
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_name = str(key).lower()
+                child_name = str(child).lower()
+
+                if key_name in {"/js", "/javascript"}:
+                    result["javascript"] = True
+
+                if key_name == "/s" and child_name == "/javascript":
+                    result["javascript"] = True
+
+                if key_name == "/openaction":
+                    result["open_action"] = True
+
+                if key_name == "/aa":
+                    result["additional_actions"] = True
+
+                if key_name in {"/embeddedfiles", "/ef"}:
+                    result["embedded_files"] = True
+
+                if key_name == "/s" and child_name == "/launch":
+                    result["launch_actions"] = True
+
+                if key_name in {"/uri", "/url"}:
+                    result["uri_actions"] = True
+
+                if key_name == "/s" and child_name == "/uri":
+                    result["uri_actions"] = True
+
+                if key_name == "/acroform":
+                    result["acroform"] = True
+
+                walk(key)
+                walk(child)
+
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                walk(child)
+
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        result["available"] = True
+        result["page_count"] = len(reader.pages)
+
+        root = reader.trailer.get("/Root")
+        walk(root)
+
+        for page in reader.pages:
+            page_object = resolve(page)
+
+            if not isinstance(page_object, dict):
+                continue
+
+            annotations = resolve(page_object.get("/Annots"))
+
+            if annotations is not None and not isinstance(
+                annotations, (list, tuple)
+            ):
+                annotations = [annotations]
+
+            for annotation_reference in annotations or []:
+                annotation = resolve(annotation_reference)
+
+                if not isinstance(annotation, dict):
+                    continue
+
+                action = resolve(annotation.get("/A"))
+
+                if not isinstance(action, dict):
+                    continue
+
+                action_type = resolve(action.get("/S"))
+
+                if str(action_type).lower() != "/uri":
+                    continue
+
+                result["uri_actions"] = True
+
+                uri = resolve(action.get("/URI"))
+
+                if uri is not None:
+                    add_url(str(uri))
+
+            walk(page)
+
+    except Exception as e:
+        result["reason"] = f"PDF parsing failed: {str(e)}"
+
+    raw_text = data.decode("latin-1", errors="ignore")
+    inspect_text(raw_text)
+
+    raw_markers = {
+        "javascript": r"/(?:JS|JavaScript)\b",
+        "open_action": r"/OpenAction\b",
+        "additional_actions": r"/AA\b",
+        "embedded_files": r"/(?:EmbeddedFiles|EF)\b",
+        "launch_actions": r"/Launch\b",
+        "uri_actions": r"/(?:URI|URL)\b",
+        "acroform": r"/AcroForm\b",
+    }
+
+    for field, pattern in raw_markers.items():
+        if re.search(pattern, raw_text, re.IGNORECASE):
+            result[field] = True
+
+    result["urls"] = urls[:20]
+
+    evidence = [
+        ("javascript", "PDF JavaScript detected"),
+        ("open_action", "PDF OpenAction detected"),
+        ("additional_actions", "PDF additional actions detected"),
+        ("embedded_files", "PDF embedded files detected"),
+        ("launch_actions", "PDF Launch action detected"),
+        ("uri_actions", "PDF URI action detected"),
+        ("acroform", "PDF AcroForm detected"),
+    ]
+
+    result["indicators"] = [
+        message
+        for field, message in evidence
+        if result[field]
+    ]
+
+    return result
+
+def analyze_docx_static(data: bytes) -> dict:
+
+    result = {
+        "available": False,
+        "macro": False,
+        "embedded_objects": False,
+        "external_links": False,
+        "dde": False,
+        "ole_objects": False,
+        "urls": [],
+        "indicators": [],
+    }
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data), "r") as z:
+            names = z.namelist()
+            result["available"] = True
+
+            # Macro-enabled Office content
+            macro_files = [
+                name for name in names
+                if name.lower().endswith("vbaproject.bin")
+            ]
+
+            if macro_files:
+                result["macro"] = True
+                result["indicators"].append(
+                    "DOCX VBA macro project detected"
+                )
+
+            # Embedded files / OLE objects
+            embedded_files = [
+                name for name in names
+                if name.startswith("word/embeddings/")
+            ]
+
+            if embedded_files:
+                result["embedded_objects"] = True
+                result["ole_objects"] = True
+                result["indicators"].append(
+                    "DOCX embedded objects detected"
+                )
+
+            # External relationships
+            relationship_files = [
+                name for name in names
+                if name.lower().endswith(".rels")
+            ]
+
+            for rel_file in relationship_files:
+                try:
+                    content = z.read(rel_file).decode(
+                        "utf-8",
+                        errors="ignore"
+                    )
+
+                    if 'TargetMode="External"' in content:
+                        result["external_links"] = True
+                        result["indicators"].append(
+                            "DOCX external relationship detected"
+                        )
+
+                    urls = re.findall(
+                        r"https?://[^\s\"'<>]+",
+                        content,
+                        flags=re.IGNORECASE,
+                )
+
+                    for url in urls:
+                        if (
+                            "schemas.openxmlformats.org" not in url.lower()
+                            and "schemas.microsoft.com" not in url.lower()
+                            and url not in result["urls"]
+                        ):
+                            result["urls"].append(url)
+
+                except Exception:
+                    continue
+
+            # DDE detection
+            #
+            # Only inspect actual Word field instruction content.
+            # Do not search for the word "dde" throughout all XML,
+            # because normal Word XML can contain unrelated text
+            # that causes false positives.
+            xml_files = [
+                name for name in names
+                if name.lower().endswith(".xml")
+            ]
+
+            for xml_file in xml_files:
+                try:
+                    content = z.read(xml_file).decode(
+                        "utf-8",
+                        errors="ignore"
+                    )
+
+                    lowered = content.lower()
+
+                    if (
+                        "w:instrtext" in lowered
+                        and (
+                            "ddeauto" in lowered
+                            or " dde " in lowered
+                        )
+                    ):
+                        result["dde"] = True
+                        result["indicators"].append(
+                            "DOCX DDE field detected"
+                        )
+                        break
+
+                except Exception:
+                    continue
+
+            # Remove duplicate indicators
+            result["indicators"] = list(
+                dict.fromkeys(result["indicators"])
+            )
+
+            return result
+
+    except Exception as exc:
+        result["reason"] = f"DOCX parsing failed: {exc}"
+        return result
+
+
+def analyze_executable_lief(data: bytes) -> dict:
+    """
+    Analyze executable files using LIEF.
+    Extracts basic structural information without assigning a malware verdict.
+    """
+    try:
+        binary = lief.parse(list(data))
+
+        if binary is None:
+            return {
+                "available": False,
+                "reason": "LIEF could not parse the file"
+            }
+
+        result = {
+            "available": True,
+            "format": str(binary.format),
+            "entrypoint": getattr(binary, "entrypoint", None),
+            "sections": [],
+            "imports": [],
+        }
+
+        for section in binary.sections:
+            result["sections"].append({
+                "name": section.name,
+                "size": section.size,
+                "virtual_size": section.virtual_size,
+            })
+
+        if hasattr(binary, "imports"):
+            result["imports"] = []
+
+            for library in binary.imports:
+                result["imports"].append({
+                    "name": library.name,
+                    "functions": [
+                        entry.name
+                        for entry in library.entries
+                        if entry.name
+                    ]
+                })
+
+        return result
+
+    except Exception as e:
+        return {
+            "available": False,
+            "reason": f"LIEF analysis failed: {str(e)}"
+        }
+
+def analyze_zip_static(data: bytes) -> dict:
+    """Inspect ZIP metadata and bounded textual content without extraction."""
+    result = {
+        "available": False,
+        "member_count": 0,
+        "total_uncompressed_size": 0,
+        "total_compressed_size": 0,
+        "compression_ratio": None,
+        "nested_archives": False,
+        "executables": [],
+        "scripts": [],
+        "suspicious_paths": [],
+        "encrypted_members": False,
+        "urls": [],
+        "indicators": [],
+    }
+
+    max_members = 10000
+    max_total_uncompressed = 512 * 1024 * 1024
+    max_total_compressed = 128 * 1024 * 1024
+    max_text_member_size = 256 * 1024
+    max_text_bytes = 2 * 1024 * 1024
+    max_report_items = 100
+    max_name_length = 160
+    max_path_depth = 8
+    executable_extensions = {
+        ".exe", ".dll", ".scr", ".com", ".msi", ".sys", ".cpl"
+    }
+    script_extensions = {
+        ".ps1", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse",
+        ".wsf", ".wsh", ".hta", ".py", ".sh"
+    }
+    archive_extensions = {
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz"
+    }
+    text_extensions = {
+        ".txt", ".csv", ".json", ".xml", ".html", ".htm", ".js",
+        ".jse", ".ps1", ".bat", ".cmd", ".vbs", ".vbe", ".wsf",
+        ".wsh", ".hta", ".py", ".sh", ".ini", ".cfg", ".conf",
+        ".yml", ".yaml", ".md", ".url"
+    }
+
+    def bounded_name(name: str) -> str:
+        name = str(name)
+        if len(name) <= max_name_length:
+            return name
+        return name[:max_name_length - 3] + "..."
+
+    def add_unique(field: str, value: str) -> None:
+        values = result[field]
+        if value not in values and len(values) < max_report_items:
+            values.append(value)
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data), "r") as archive:
+            infos = archive.infolist()
+            result["available"] = True
+            result["member_count"] = len(infos)
+            text_bytes_read = 0
+
+            for info in infos:
+                name = str(info.filename)
+                safe_name = bounded_name(name)
+                lower_name = name.lower()
+                suffix = lower_name.rsplit(".", 1)[-1] if "." in lower_name else ""
+                suffix = "." + suffix if suffix else ""
+                result["total_uncompressed_size"] += max(info.file_size, 0)
+                result["total_compressed_size"] += max(info.compress_size, 0)
+
+                if suffix in executable_extensions:
+                    add_unique("executables", safe_name)
+                    result["indicators"].append(
+                        f"ZIP executable member detected: {safe_name}"
+                    )
+
+                if suffix in script_extensions:
+                    add_unique("scripts", safe_name)
+                    result["indicators"].append(
+                        f"ZIP script member detected: {safe_name}"
+                    )
+
+                if suffix in archive_extensions:
+                    result["nested_archives"] = True
+                    result["indicators"].append(
+                        f"ZIP nested archive detected: {safe_name}"
+                    )
+
+                normalized_path = name.replace("\\", "/")
+                path_parts = [part for part in normalized_path.split("/") if part]
+                is_absolute = (
+                    normalized_path.startswith("/")
+                    or normalized_path.startswith("\\")
+                    or bool(re.match(r"^[a-zA-Z]:/", normalized_path))
+                )
+                has_traversal = ".." in path_parts
+                is_too_deep = len(path_parts) > max_path_depth
+                if is_absolute or has_traversal or is_too_deep:
+                    add_unique("suspicious_paths", safe_name)
+                    result["indicators"].append(
+                        f"ZIP suspicious path detected: {safe_name}"
+                    )
+
+                if info.flag_bits & 0x1:
+                    result["encrypted_members"] = True
+                    result["indicators"].append(
+                        "ZIP encrypted member detected"
+                    )
+
+                if (
+                    not info.is_dir()
+                    and suffix in text_extensions
+                    and info.file_size <= max_text_member_size
+                    and text_bytes_read < max_text_bytes
+                ):
+                    read_size = min(
+                        info.file_size,
+                        max_text_member_size,
+                        max_text_bytes - text_bytes_read,
+                    )
+                    try:
+                        with archive.open(info, "r") as member:
+                            content = member.read(read_size)
+                        text_bytes_read += len(content)
+                        text = content.decode("utf-8", errors="ignore")
+                        for url in re.findall(
+                            r"(?:https?|ftp)://[^\s<>\"']+",
+                            text,
+                            flags=re.IGNORECASE,
+                        ):
+                            add_unique("urls", url.rstrip(".,;)]}"))
+                    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+                        continue
+
+            if result["total_compressed_size"] > 0:
+                result["compression_ratio"] = round(
+                    result["total_uncompressed_size"]
+                    / result["total_compressed_size"],
+                    2,
+                )
+
+            if len(infos) > max_members:
+                result["indicators"].append(
+                    "ZIP member count is unusually large"
+                )
+            if result["total_uncompressed_size"] > max_total_uncompressed:
+                result["indicators"].append(
+                    "ZIP total uncompressed size is unusually large"
+                )
+            if result["total_compressed_size"] > max_total_compressed:
+                result["indicators"].append(
+                    "ZIP total compressed size is unusually large"
+                )
+            if (
+                result["compression_ratio"] is not None
+                and result["compression_ratio"] >= 100
+                and result["total_uncompressed_size"] >= 1024 * 1024
+            ):
+                result["indicators"].append(
+                    "ZIP high compression ratio observed"
+                )
+
+            result["indicators"] = list(
+                dict.fromkeys(result["indicators"])
+            )[:max_report_items]
+            return result
+
+    except Exception as exc:
+        result["reason"] = f"ZIP parsing failed: {exc}"
+        return result
+
+def analyze_image_static(data: bytes) -> dict:
+    """Inspect common image headers and bounded textual metadata only."""
+    result = {
+        "available": False,
+        "format": None,
+        "width": None,
+        "height": None,
+        "mode": None,
+        "animated": False,
+        "frame_count": None,
+        "metadata": {},
+        "urls": [],
+        "indicators": [],
+    }
+
+    max_metadata_fields = 20
+    max_metadata_value_length = 200
+    max_urls = 20
+    max_dimension = 20000
+    max_pixels = 200_000_000
+    suspicious_metadata_terms = {
+        "javascript", "powershell", "cmd.exe", "wscript", "<script",
+        "payload", "base64"
+    }
+
+    def add_url(value: str) -> None:
+        value = value.strip().rstrip(".,;)]}")
+        if value and value not in result["urls"] and len(result["urls"]) < max_urls:
+            result["urls"].append(value)
+
+    def add_metadata(key: str, value: object) -> None:
+        if len(result["metadata"]) >= max_metadata_fields:
+            return
+        text = str(value).replace("\x00", " ")
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return
+        text = text[:max_metadata_value_length]
+        result["metadata"][key[:80]] = text
+        for url in re.findall(
+            r"(?:https?|ftp)://[^\s<>\"']+",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            add_url(url)
+        lowered = text.lower()
+        if any(term in lowered for term in suspicious_metadata_terms):
+            result["indicators"].append(
+                f"IMAGE suspicious metadata field detected: {key[:80]}"
+            )
+
+    def set_dimensions(width: int, height: int) -> None:
+        if width <= 0 or height <= 0:
+            raise ValueError("invalid image dimensions")
+        result["width"] = width
+        result["height"] = height
+        if width > max_dimension or height > max_dimension:
+            result["indicators"].append(
+                f"IMAGE unusually large dimensions: {width}x{height}"
+            )
+        if width * height > max_pixels:
+            result["indicators"].append("IMAGE unusually large pixel count")
+
+    def skip_gif_subblocks(offset: int) -> int:
+        while offset < len(data):
+            block_size = data[offset]
+            offset += 1
+            if block_size == 0:
+                return offset
+            offset += block_size
+        return len(data)
+
+    def parse_png() -> None:
+        if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("invalid PNG signature")
+        width, height, bit_depth, color_type = struct.unpack(
+            ">IIBB", data[16:26]
+        )
+        modes = {0: "L", 2: "RGB", 3: "P", 4: "LA", 6: "RGBA"}
+        set_dimensions(width, height)
+        result["mode"] = modes.get(color_type, f"color_type_{color_type}")
+        result["metadata"]["bit_depth"] = bit_depth
+        offset = 8
+        frame_count = 1
+        chunks_seen = 0
+        while offset + 12 <= len(data) and chunks_seen < 10000:
+            length = struct.unpack(">I", data[offset:offset + 4])[0]
+            chunk_end = offset + 12 + length
+            if chunk_end > len(data):
+                break
+            chunk_type = data[offset + 4:offset + 8]
+            chunk_data = data[offset + 8:offset + 8 + length]
+            if chunk_type == b"acTL" and len(chunk_data) >= 8:
+                frame_count = struct.unpack(">I", chunk_data[:4])[0]
+            elif chunk_type == b"tEXt" and b"\x00" in chunk_data:
+                key, value = chunk_data.split(b"\x00", 1)
+                add_metadata(key.decode("latin-1", errors="ignore"), value.decode("latin-1", errors="ignore"))
+            elif chunk_type == b"iTXt":
+                fields = chunk_data.split(b"\x00", 5)
+                if len(fields) == 6:
+                    add_metadata(fields[0].decode("latin-1", errors="ignore"), fields[5].decode("utf-8", errors="ignore"))
+            offset = chunk_end
+            chunks_seen += 1
+        result["frame_count"] = frame_count
+        result["animated"] = frame_count > 1
+
+    def parse_gif() -> None:
+        if len(data) < 13 or data[:6] not in {b"GIF87a", b"GIF89a"}:
+            raise ValueError("invalid GIF signature")
+        width, height = struct.unpack("<HH", data[6:10])
+        packed = data[10]
+        set_dimensions(width, height)
+        result["mode"] = "P"
+        offset = 13
+        if packed & 0x80:
+            offset += 3 * (2 ** ((packed & 0x07) + 1))
+        frames = 0
+        has_loop_extension = False
+        while offset < len(data) and frames < 10000:
+            marker = data[offset]
+            offset += 1
+            if marker == 0x3B:
+                break
+            if marker == 0x2C:
+                if offset + 9 > len(data):
+                    break
+                image_packed = data[offset + 8]
+                offset += 9
+                if image_packed & 0x80:
+                    offset += 3 * (2 ** ((image_packed & 0x07) + 1))
+                if offset >= len(data):
+                    break
+                offset += 1
+                offset = skip_gif_subblocks(offset)
+                frames += 1
+            elif marker == 0x21:
+                if offset >= len(data):
+                    break
+                label = data[offset]
+                offset += 1
+                if label == 0xFE:
+                    comment_start = offset
+                    offset = skip_gif_subblocks(offset)
+                    add_metadata("comment", data[comment_start:offset].decode("latin-1", errors="ignore"))
+                elif label == 0xFF:
+                    if offset >= len(data):
+                        break
+                    block_size = data[offset]
+                    app_start = offset + 1
+                    offset = skip_gif_subblocks(app_start + block_size)
+                    if b"NETSCAPE" in data[app_start:app_start + block_size]:
+                        has_loop_extension = True
+                else:
+                    offset = skip_gif_subblocks(offset)
+            else:
+                break
+        result["frame_count"] = frames
+        result["animated"] = frames > 1 or has_loop_extension
+
+    def parse_jpeg() -> None:
+        if len(data) < 4 or data[:2] != b"\xff\xd8":
+            raise ValueError("invalid JPEG signature")
+        offset = 2
+        frames = 0
+        while offset + 4 <= len(data) and frames < 10000:
+            while offset < len(data) and data[offset] != 0xFF:
+                offset += 1
+            while offset < len(data) and data[offset] == 0xFF:
+                offset += 1
+            if offset >= len(data):
+                break
+            marker = data[offset]
+            offset += 1
+            if marker in {0xD8, 0xD9}:
+                continue
+            if marker == 0xDA:
+                break
+            if offset + 2 > len(data):
+                break
+            segment_length = struct.unpack(">H", data[offset:offset + 2])[0]
+            if segment_length < 2 or offset + segment_length > len(data):
+                break
+            segment = data[offset + 2:offset + segment_length]
+            if marker in set(range(0xC0, 0xC4)) | set(range(0xC5, 0xC8)) | set(range(0xC9, 0xCC)) | set(range(0xCD, 0xD0)):
+                if len(segment) >= 6:
+                    height, width, components = struct.unpack(">HHB", segment[1:6])
+                    set_dimensions(width, height)
+                    result["mode"] = {1: "L", 3: "RGB", 4: "CMYK"}.get(components, f"components_{components}")
+                    frames += 1
+            elif marker == 0xE1 and segment.startswith(b"Exif\x00\x00"):
+                result["metadata"]["exif_present"] = True
+                for text in re.findall(rb"[ -~]{4,}", segment[6:]):
+                    add_metadata("exif_text", text.decode("latin-1", errors="ignore"))
+            elif marker == 0xFE:
+                add_metadata("comment", segment)
+            offset += segment_length
+        result["frame_count"] = frames or 1
+
+    def parse_bmp() -> None:
+        if len(data) < 26 or data[:2] != b"BM":
+            raise ValueError("invalid BMP signature")
+        dib_size = struct.unpack("<I", data[14:18])[0]
+        if dib_size < 12 or len(data) < 14 + dib_size:
+            raise ValueError("invalid BMP header")
+        if dib_size == 12:
+            width, height, planes, bits = struct.unpack("<HHHH", data[18:26])
+        else:
+            width, height, planes, bits = struct.unpack("<iiHH", data[18:30])
+            height = abs(height)
+        set_dimensions(width, height)
+        result["mode"] = {1: "1", 4: "P", 8: "P", 16: "RGB", 24: "RGB", 32: "RGBA"}.get(bits, f"bits_{bits}")
+        result["metadata"]["bits_per_pixel"] = bits
+
+    def parse_tiff() -> None:
+        if len(data) < 8 or data[:2] not in {b"II", b"MM"}:
+            raise ValueError("invalid TIFF byte order")
+        endian = "<" if data[:2] == b"II" else ">"
+        if struct.unpack(endian + "H", data[2:4])[0] != 42:
+            raise ValueError("invalid TIFF signature")
+        ifd_offset = struct.unpack(endian + "I", data[4:8])[0]
+        frames = 0
+        while ifd_offset and ifd_offset + 2 <= len(data) and frames < 100:
+            count = struct.unpack(endian + "H", data[ifd_offset:ifd_offset + 2])[0]
+            entries_end = ifd_offset + 2 + count * 12
+            if entries_end + 4 > len(data):
+                break
+            values = {}
+            for index in range(count):
+                entry = ifd_offset + 2 + index * 12
+                tag, value_type, value_count = struct.unpack(endian + "HHI", data[entry:entry + 8])
+                value_size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8}.get(value_type, 0) * value_count
+                raw = data[entry + 8:entry + 12] if value_size <= 4 else data[struct.unpack(endian + "I", data[entry + 8:entry + 12])[0]:][:value_size]
+                if value_type == 3 and len(raw) >= 2:
+                    values[tag] = struct.unpack(endian + "H", raw[:2])[0]
+                elif value_type == 4 and len(raw) >= 4:
+                    values[tag] = struct.unpack(endian + "I", raw[:4])[0]
+                elif value_type == 2:
+                    add_metadata(f"tiff_{tag}", raw.decode("latin-1", errors="ignore"))
+            if 256 in values and 257 in values:
+                set_dimensions(values[256], values[257])
+            result["mode"] = {1: "L", 2: "RGB", 5: "CMYK"}.get(values.get(262), "RGB")
+            frames += 1
+            ifd_offset = struct.unpack(endian + "I", data[entries_end:entries_end + 4])[0]
+        if frames == 0 or result["width"] is None:
+            raise ValueError("TIFF dimensions unavailable")
+        result["frame_count"] = frames
+        result["animated"] = frames > 1
+
+    def parse_webp() -> None:
+        if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+            raise ValueError("invalid WEBP signature")
+        offset = 12
+        frames = 0
+        animation_flag = False
+        while offset + 8 <= len(data) and frames < 10000:
+            chunk_type = data[offset:offset + 4]
+            chunk_size = struct.unpack("<I", data[offset + 4:offset + 8])[0]
+            chunk_start = offset + 8
+            chunk_end = chunk_start + chunk_size
+            if chunk_end > len(data):
+                break
+            chunk = data[chunk_start:chunk_end]
+            if chunk_type == b"VP8X" and len(chunk) >= 10:
+                flags = chunk[0]
+                animation_flag = bool(flags & 0x02)
+                width = 1 + int.from_bytes(chunk[4:7], "little")
+                height = 1 + int.from_bytes(chunk[7:10], "little")
+                set_dimensions(width, height)
+                result["mode"] = "RGBA" if flags & 0x10 else "RGB"
+            elif chunk_type == b"ANIM":
+                animation_flag = True
+            elif chunk_type == b"ANMF":
+                frames += 1
+            offset = chunk_end + (chunk_size & 1)
+        result["frame_count"] = frames or 1
+        result["animated"] = animation_flag or frames > 1
+
+    try:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            result["format"] = "PNG"
+            parse_png()
+        elif data[:6] in {b"GIF87a", b"GIF89a"}:
+            result["format"] = "GIF"
+            parse_gif()
+        elif data[:2] == b"\xff\xd8":
+            result["format"] = "JPEG"
+            parse_jpeg()
+        elif data[:2] == b"BM":
+            result["format"] = "BMP"
+            parse_bmp()
+        elif data[:2] in {b"II", b"MM"}:
+            result["format"] = "TIFF"
+            parse_tiff()
+        elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            result["format"] = "WEBP"
+            parse_webp()
+        else:
+            raise ValueError("unsupported or malformed image format")
+        result["available"] = True
+        if result["animated"]:
+            result["indicators"].append("IMAGE animated/multi-frame content detected")
+        result["indicators"] = list(dict.fromkeys(result["indicators"]))
+        return result
+    except Exception as exc:
+        result["reason"] = f"Image parsing failed: {exc}"
+        return result
+
+def analyze_svg_static(data: bytes) -> dict:
+    """Inspect SVG XML as static data without executing or resolving resources."""
+    result = {
+        "available": False,
+        "width": None,
+        "height": None,
+        "viewbox": None,
+        "script": False,
+        "event_handlers": [],
+        "external_references": [],
+        "javascript_urls": [],
+        "embedded_data": False,
+        "indicators": [],
+    }
+    max_values = 20
+    max_value_length = 200
+
+    def add_indicator(value: str) -> None:
+        if value not in result["indicators"]:
+            result["indicators"].append(value)
+
+    def bounded_value(value: object) -> str:
+        return str(value).strip()[:max_value_length]
+
+    def add_external_reference(value: object) -> None:
+        value = bounded_value(value)
+        if value and value not in result["external_references"]:
+            if len(result["external_references"]) < max_values:
+                result["external_references"].append(value)
+                add_indicator("SVG external reference detected")
+
+    def add_javascript_url(value: object) -> None:
+        value = bounded_value(value)
+        if value and value not in result["javascript_urls"]:
+            if len(result["javascript_urls"]) < max_values:
+                result["javascript_urls"].append(value)
+                add_indicator("SVG javascript URL detected")
+
+    def local_name(name: str) -> str:
+        return name.rsplit("}", 1)[-1].lower()
+
+    def inspect_reference(value: object) -> None:
+        reference = bounded_value(value)
+        lowered = reference.lower()
+        if lowered.startswith("javascript:"):
+            add_javascript_url(reference)
+            return
+        if lowered.startswith("data:"):
+            result["embedded_data"] = True
+            add_indicator("SVG embedded data detected")
+            return
+        if (
+            lowered.startswith(("http://", "https://", "//", "ftp://", "file:"))
+            or re.match(r"^[a-z][a-z0-9+.-]*:", lowered)
+        ):
+            add_external_reference(reference)
+
+    try:
+        raw_text = data.decode("utf-8", errors="ignore")
+        if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", raw_text, re.IGNORECASE):
+            add_indicator("SVG XML entity/DOCTYPE construct detected")
+
+        root = ET.fromstring(data)
+        result["available"] = True
+
+        for attribute_name, attribute_value in root.attrib.items():
+            name = local_name(attribute_name)
+            value = bounded_value(attribute_value)
+            if name == "width":
+                result["width"] = value
+            elif name == "height":
+                result["height"] = value
+            elif name == "viewbox":
+                result["viewbox"] = value
+
+        for element in root.iter():
+            if local_name(str(element.tag)) == "script":
+                result["script"] = True
+                add_indicator("SVG script element detected")
+
+            for attribute_name, attribute_value in element.attrib.items():
+                name = local_name(attribute_name)
+                value = bounded_value(attribute_value)
+                if name.startswith("on"):
+                    if name not in result["event_handlers"] and len(result["event_handlers"]) < max_values:
+                        result["event_handlers"].append(name)
+                    add_indicator("SVG event handler detected")
+                elif name in {"href", "src", "link"}:
+                    inspect_reference(value)
+
+        return result
+    except Exception as exc:
+        result["reason"] = f"SVG parsing failed: {exc}"
+        return result
+
+def analyze_html_static(data: bytes) -> dict:
+    """Inspect HTML syntax and references without executing or fetching content."""
+    result = {
+        "available": False,
+        "script": False,
+        "script_count": 0,
+        "inline_scripts": [],
+        "event_handlers": [],
+        "javascript_urls": [],
+        "external_references": [],
+        "data_urls": [],
+        "embedded_elements": [],
+        "external_form_actions": [],
+        "meta_refresh": [],
+        "indicators": [],
+    }
+    max_items = 20
+    max_value_length = 240
+    max_script_length = 500
+
+    def bounded(value: object, limit: int = max_value_length) -> str:
+        return str(value).strip()[:limit]
+
+    def add_unique(field: str, value: str) -> None:
+        if value and value not in result[field] and len(result[field]) < max_items:
+            result[field].append(value)
+
+    def add_indicator(value: str) -> None:
+        if value not in result["indicators"]:
+            result["indicators"].append(value)
+
+    class StaticHTMLParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=False)
+            self.in_script = False
+            self.script_buffer = []
+            self.script_length = 0
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+            tag = tag.lower()
+            attributes = {
+                name.lower(): value or ""
+                for name, value in attrs
+                if name
+            }
+
+            if tag == "script":
+                result["script"] = True
+                result["script_count"] += 1
+                add_indicator("HTML script element detected")
+                self.in_script = True
+                self.script_buffer = []
+                self.script_length = 0
+
+            for name in attributes:
+                if name.startswith("on"):
+                    add_unique("event_handlers", name)
+                    add_indicator("HTML event handler detected")
+
+            for name in {"href", "src", "action", "formaction"}:
+                value = attributes.get(name)
+                if not value:
+                    continue
+                bounded_value = bounded(value)
+                lowered_value = bounded_value.lower()
+                if lowered_value.startswith("javascript:"):
+                    add_unique("javascript_urls", bounded_value)
+                    add_indicator("HTML javascript URL detected")
+                elif lowered_value.startswith("data:"):
+                    add_unique("data_urls", bounded_value)
+                    add_indicator("HTML embedded data URL detected")
+                elif lowered_value.startswith(("http://", "https://")):
+                    reference = f"{name}={bounded_value}"
+                    add_unique("external_references", reference)
+                    add_indicator("HTML external reference detected")
+                    if tag == "form" and name == "action":
+                        add_unique("external_form_actions", reference)
+                        add_indicator("HTML external form action detected")
+
+            if tag in {"iframe", "object", "embed"}:
+                details = " ".join(
+                    f"{name}={bounded(value)}"
+                    for name, value in attributes.items()
+                    if value
+                    and name in {"src", "data", "type", "name", "id"}
+                )
+                add_unique("embedded_elements", f"{tag} {details}".strip())
+                add_indicator("HTML embedded content detected")
+
+            if tag == "meta":
+                http_equiv = attributes.get("http-equiv", "").lower()
+                if http_equiv == "refresh":
+                    refresh = bounded(attributes.get("content", ""))
+                    add_unique("meta_refresh", refresh or "http-equiv=refresh")
+                    add_indicator("HTML meta refresh detected")
+
+        def handle_startendtag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+            self.handle_starttag(tag, attrs)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag.lower() == "script" and self.in_script:
+                snippet = bounded("".join(self.script_buffer), max_script_length)
+                if snippet:
+                    add_unique("inline_scripts", snippet)
+                self.in_script = False
+                self.script_buffer = []
+                self.script_length = 0
+
+        def handle_data(self, data: str) -> None:
+            if not self.in_script:
+                return
+            remaining = max_script_length - self.script_length
+            if remaining <= 0:
+                return
+            chunk = data[:remaining]
+            self.script_buffer.append(chunk)
+            self.script_length += len(chunk)
+
+    try:
+        parser = StaticHTMLParser()
+        parser.feed(data.decode("utf-8", errors="replace"))
+        parser.close()
+        if parser.in_script:
+            snippet = bounded("".join(parser.script_buffer), max_script_length)
+            if snippet:
+                add_unique("inline_scripts", snippet)
+        result["available"] = True
+        return result
+    except Exception as exc:
+        result["reason"] = f"HTML parsing failed: {exc}"
+        return result
+
+def analyze_javascript_static(data: bytes) -> dict:
+    """Inspect standalone JavaScript as bounded text without executing it."""
+    result = {
+        "available": False,
+        "script_features": [],
+        "dynamic_execution": [],
+        "obfuscation": [],
+        "network_apis": [],
+        "browser_apis": [],
+        "storage_apis": [],
+        "external_references": [],
+        "indicators": [],
+    }
+    max_analysis_size = 2 * 1024 * 1024
+    max_items = 20
+    max_value_length = 240
+
+    def bounded(value: object) -> str:
+        return str(value).strip()[:max_value_length]
+
+    def add_unique(field: str, value: object) -> None:
+        value = bounded(value)
+        if value and value not in result[field] and len(result[field]) < max_items:
+            result[field].append(value)
+
+    def add_indicator(value: str) -> None:
+        if value not in result["indicators"]:
+            result["indicators"].append(value)
+
+    def add_matches(field: str, pattern: str, indicator: str) -> None:
+        matches = re.finditer(pattern, source, flags=re.IGNORECASE | re.MULTILINE)
+        found = False
+        for match in matches:
+            add_unique(field, match.group(0))
+            found = True
+        if found:
+            add_indicator(indicator)
+
+    if not data:
+        result["reason"] = "JavaScript input is empty"
+        return result
+
+    try:
+        source = data[:max_analysis_size].decode("utf-8", errors="replace")
+    except (AttributeError, TypeError, UnicodeError):
+        result["reason"] = "JavaScript input could not be decoded"
+        return result
+
+    if not source:
+        result["reason"] = "JavaScript input is empty"
+        return result
+
+    dynamic_patterns = [
+        r"\beval\s*\(",
+        r"\bFunction\s*\(",
+        r"\bset(?:Timeout|Interval)\s*\(\s*(['\"])",
+        r"\bdocument\s*\.\s*write\s*\(",
+        r"\b(?:WebAssembly|WebAssembly\s*\.\s*(?:instantiate|compile|Module))\b",
+        r"\bimport\s*\(",
+        r"\bdocument\s*\.\s*createElement\s*\(\s*['\"]script['\"]",
+    ]
+    for pattern in dynamic_patterns:
+        add_matches("dynamic_execution", pattern, "JAVASCRIPT dynamic execution pattern detected")
+
+    add_matches(
+        "script_features",
+        r"\b(?:WebAssembly|WebAssembly\s*\.\s*(?:instantiate|compile|Module))\b|\bimport\s*\(",
+        "JAVASCRIPT script feature detected",
+    )
+
+    add_matches(
+        "network_apis",
+        r"\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b|\bnavigator\s*\.\s*sendBeacon\s*\(",
+        "JAVASCRIPT network API detected",
+    )
+    add_matches(
+        "browser_apis",
+        r"\bdocument\s*\.\s*cookie\b|\bwindow\s*\.\s*open\s*\(|\bnavigator\s*\.[A-Za-z_$][\w$]*|\blocation(?:\s*\.|\s*=)",
+        "JAVASCRIPT browser-sensitive API detected",
+    )
+    add_matches(
+        "storage_apis",
+        r"\b(?:localStorage|sessionStorage)\b",
+        "JAVASCRIPT browser-sensitive API detected",
+    )
+
+    obfuscation_patterns = [
+        r"\bString\s*\.\s*fromCharCode\s*\(",
+        r"\batob\s*\(",
+        r"\bbtoa\s*\(",
+    ]
+    for pattern in obfuscation_patterns:
+        add_matches("obfuscation", pattern, "JAVASCRIPT obfuscation indicator detected")
+
+    string_literals = re.finditer(r"(['\"])(?:\\.|(?!\1).){1,}", source, re.DOTALL)
+    escape_count = len(re.findall(r"\\(?:x[0-9a-f]{2}|u[0-9a-f]{4}|.)", source, re.IGNORECASE))
+    long_encoded_found = False
+    for match in string_literals:
+        literal = match.group(0)
+        content = literal[1:-1]
+        if len(content) >= 120 and re.fullmatch(r"[A-Za-z0-9+/=_\-]+", content):
+            add_unique("obfuscation", literal)
+            long_encoded_found = True
+    if escape_count >= 20:
+        add_unique("obfuscation", f"escape sequences: {escape_count}")
+    if long_encoded_found or escape_count >= 20:
+        add_indicator("JAVASCRIPT obfuscation indicator detected")
+
+    add_matches(
+        "external_references",
+        r"(?:https?://|//)[^\s<>\"'`\\)]+",
+        "JAVASCRIPT external reference detected",
+    )
+
+    if result["dynamic_execution"]:
+        result["script_features"].extend(result["dynamic_execution"][:max_items])
+        result["script_features"] = list(dict.fromkeys(result["script_features"]))[:max_items]
+    result["available"] = True
+    return result
+
+
+def extract_interesting_imports(lief_analysis: dict) -> list[dict]:
+    """
+    Classify potentially interesting imported Windows APIs.
+    These are supporting static-analysis indicators, not malware verdicts.
+    """
+    if not lief_analysis or not lief_analysis.get("available"):
+        return []
+
+    import_categories = {
+        "Process Injection": {
+            "VirtualAlloc",
+            "VirtualAllocEx",
+            "VirtualProtect",
+            "VirtualProtectEx",
+            "WriteProcessMemory",
+            "CreateRemoteThread",
+            "NtCreateThreadEx",
+            "QueueUserAPC",
+        },
+        "Process Creation": {
+            "CreateProcessA",
+            "CreateProcessW",
+            "WinExec",
+            "ShellExecuteA",
+            "ShellExecuteW",
+        },
+        "Memory Manipulation": {
+            "HeapAlloc",
+            "HeapCreate",
+            "VirtualFree",
+            "VirtualFreeEx",
+            "MapViewOfFile",
+            "UnmapViewOfFile",
+        },
+        "Networking": {
+            "InternetOpenA",
+            "InternetOpenW",
+            "InternetConnectA",
+            "InternetConnectW",
+            "HttpOpenRequestA",
+            "HttpOpenRequestW",
+            "WinHttpOpen",
+            "WinHttpConnect",
+            "WSAStartup",
+            "connect",
+        },
+    }
+
+    results = []
+
+    for library in lief_analysis.get("imports", []):
+        library_name = library.get("name", "")
+        functions = library.get("functions", [])
+
+        for function_name in functions:
+            for category, apis in import_categories.items():
+                if function_name in apis:
+                    results.append({
+                        "library": library_name,
+                        "function": function_name,
+                        "category": category,
+                    })
+
+    return results
+
 def detect_file_type(data: bytes, filename: str) -> Dict[str, Any]:
     """
     Uses Google Magika to detect actual file type from binary contents
@@ -110,16 +1413,17 @@ def detect_file_type(data: bytes, filename: str) -> Dict[str, Any]:
 
     # Known executable/script labels flagged by Magika
     executable_labels = {
-        "exe", "elf", "mach-o", "dll", "pe", "batch", "powershell", 
-        "sh", "vbs", "javascript", "python", "autorun"
+        "exe", "elf", "mach-o", "dll", "pe", "batch", "powershell",
+        "sh", "vbs", "javascript", "python", "autorun", "pebin"
     }
 
     is_dangerous_executable = actual_label in executable_labels
     spoofed = False
 
-    # Check if a non-executable extension claims an executable payload
+    # Only treat a text-like extension as spoofed when Magika is confidently identifying
+    # an executable/script payload rather than a low-confidence guess from ordinary text.
     innocent_extensions = {"pdf", "jpg", "jpeg", "png", "gif", "txt", "docx", "xlsx", "mp4", "mp3"}
-    if claimed_ext in innocent_extensions and is_dangerous_executable:
+    if claimed_ext in innocent_extensions and is_dangerous_executable and confidence >= 80.0:
         spoofed = True
 
     return {
@@ -153,32 +1457,45 @@ def scan_clamav(data: bytes) -> Tuple[bool, Optional[str]]:
 
 def extract_suspicious_indicators(data: bytes) -> list[str]:
     """
-    Extracts suspicious heuristic markers such as shellcode APIs,
-    PowerShell encoded commands, dangerous system calls, or eval loops.
+    Extracts heuristic security indicators from raw file bytes.
+
+    Indicators are classified by strength. Common words such as
+    'powershell' are treated as weak signals, while combinations
+    associated with code injection or payload execution are stronger.
     """
     indicators = []
-    # Sample up to first 1MB for heuristic string checks
-    sample = data[:1024 * 1024]
-    
-    patterns = [
-        (b"powershell", "PowerShell invocation detected"),
-        (b"-enc", "Possible base64 encoded command flag"),
-        (b"WScript.Shell", "Windows Script Host invocation"),
-        (b"FromBase64String", "Base64 payload de-obfuscation marker"),
-        (b"VirtualAlloc", "Memory allocation API often used for shellcode injection"),
-        (b"CreateRemoteThread", "Thread injection API detected"),
-        (b"cmd.exe", "Command prompt invocation"),
-        (b"eval(", "Dynamic code execution (eval) detected"),
-        (b"exec(", "Dynamic execution (exec) detected"),
-        (b"/bin/sh", "Unix shell execution detected"),
-        (b"/bin/bash", "Unix bash execution detected"),
-        (b"curl ", "Embedded HTTP downloader detected"),
-        (b"wget ", "Embedded HTTP downloader detected"),
+
+    sample = data[:1024 * 1024].lower()
+
+    weak_patterns = [
+        (b"powershell", "PowerShell reference detected"),
+        (b"cmd.exe", "Command prompt reference detected"),
+        (b"/bin/sh", "Unix shell reference detected"),
+        (b"/bin/bash", "Bash shell reference detected"),
+        (b"curl ", "Curl command reference detected"),
+        (b"wget ", "Wget command reference detected"),
     ]
 
-    for pat, desc in patterns:
-        if pat.lower() in sample.lower():
-            indicators.append(desc)
+    strong_patterns = [
+        (b"wscript.shell", "Windows Script Host invocation detected"),
+        (b"frombase64string", "Base64 payload de-obfuscation marker detected"),
+        (b"virtualalloc", "Memory allocation API associated with code injection detected"),
+        (b"createremotethread", "Remote thread creation API detected"),
+    ]
+
+    for pattern, description in weak_patterns:
+        if pattern in sample:
+            indicators.append(f"WEAK: {description}")
+
+    for pattern, description in strong_patterns:
+        if pattern in sample:
+            indicators.append(f"STRONG: {description}")
+
+    if b"-enc" in sample and b"powershell" in sample:
+        indicators.append("STRONG: PowerShell encoded-command combination detected")
+
+    if b"eval(" in sample or b"exec(" in sample:
+        indicators.append("WEAK: Dynamic code execution reference detected")
 
     return indicators
 
@@ -188,53 +1505,495 @@ def llm_worst_case_analysis(data: bytes, filename: str, context: Dict[str, Any])
     Only triggered when a file is suspicious, obfuscated, or ambiguous.
     Passes extracted printable strings and metadata (NOT dangerous raw execution).
     """
-    # Extract printable ASCII/UTF-8 snippets safely
     sample = data[:4096]
     printable_chars = [chr(b) if 32 <= b <= 126 or b in (10, 13, 9) else " " for b in sample]
     extracted_text = "".join(printable_chars).strip()
-    # Compact multiple spaces
     extracted_text = re.sub(r"\s+", " ", extracted_text)[:1500]
 
-    system_prompt = f"""You are a specialized malware and security triage analyst.
-Your job is to analyze suspicious or anomalous files that passed standard filters but exhibit abnormal characteristics.
+    system_prompt = f"""You are a LOCAL malware triage assistant.
 
-File Details:
-- Filename: {filename}
-- Claimed Type: {context.get('claimed_extension')}
-- Detected Type: {context.get('actual_type')} ({context.get('mime_type')})
-- Shannon Entropy: {context.get('entropy')} (Normal text/code is 3.5-5.5, high is >7.0)
-- Detected Indicators: {context.get('indicators')}
+Your job is to assess whether the supplied file evidence provides enough
+evidence to classify the file as SAFE, SUSPICIOUS, or MALICIOUS.
 
-Extracted Printable Byte Snippet (First 1.5KB sanitized):
+IMPORTANT:
+You are performing STATIC TRIAGE ONLY.
+
+You do NOT have proof that any command, URL, API, script, or executable
+behavior contained in the extracted text was actually executed.
+
+A string appearing inside a file is NOT proof that the corresponding
+behavior occurred.
+
+==================================================
+CRITICAL ANTI-FALSE-POSITIVE RULES
+==================================================
+
+1. DO NOT assume the file is malicious because it reached this AI stage.
+
+2. DO NOT classify a file as MALICIOUS merely because the extracted text
+   contains:
+   - PowerShell
+   - cmd.exe
+   - bash
+   - URLs
+   - HTTP/HTTPS addresses
+   - curl
+   - wget
+   - eval
+   - exec
+   - scripting terms
+   - Windows API names
+   - executable names
+   - encoded-looking strings
+   - unusual strings
+
+3. These may simply be:
+   - documentation
+   - examples
+   - source code
+   - tutorials
+   - advertisements
+   - hyperlinks
+   - legitimate software functionality
+   - text embedded inside a document
+   - metadata
+   - normal application content
+
+4. A PDF containing a URL does NOT automatically mean the PDF is malicious.
+
+5. A PDF containing the words "PowerShell", "cmd.exe", "curl", "wget",
+   "eval", or similar terms does NOT automatically mean the PDF is malicious.
+
+6. High entropy alone is NOT evidence of malware.
+
+7. File type alone is NOT evidence of malware.
+
+8. An executable file alone is NOT evidence of malware.
+
+9. An unusual filename alone is NOT evidence of malware.
+
+10. Only assign MALICIOUS when there is STRONG, SPECIFIC evidence indicating
+    malicious intent.
+
+11. Do NOT infer behavior that cannot be established from the supplied
+    evidence.
+
+12. If the evidence is insufficient to establish malicious behavior,
+    choose SAFE rather than MALICIOUS.
+
+13. Use SUSPICIOUS only when there is a genuine security concern supported
+    by multiple relevant indicators, but insufficient evidence for a
+    MALICIOUS classification.
+
+==================================================
+HOW TO INTERPRET EXTRACTED TEXT
+==================================================
+
+The extracted text below is only a collection of bytes converted into
+printable characters.
+
+It is NOT a record of commands that were executed.
+
+For example:
+
+"Visit https://example.com"
+
+does NOT prove that the file downloaded anything.
+
+Similarly:
+
+"powershell.exe"
+
+does NOT prove that PowerShell was executed.
+
+Similarly:
+
+"cmd.exe /c ..."
+
+does NOT prove that a command shell was executed.
+
+Similarly:
+
+"eval(...)"
+
+does NOT prove that code was executed.
+
+Treat these as textual indicators only unless the supplied evidence provides
+additional information establishing malicious behavior.
+
+==================================================
+FILE INFORMATION
+==================================================
+
+Filename:
+{filename}
+
+Claimed extension:
+{context.get('claimed_extension')}
+
+Detected file type:
+{context.get('actual_type')}
+
+MIME type:
+{context.get('mime_type')}
+
+Shannon entropy:
+{context.get('entropy')}
+
+Heuristic indicators:
+{context.get('indicators')}
+
+==================================================
+EXTRACTED PRINTABLE CONTENT
+==================================================
+
+The following content was extracted from the file:
+
 \"\"\"{extracted_text}\"\"\"
 
-Evaluate if this file exhibits indicators of malicious intent (such as obfuscation, reverse shells, dropper behavior, malicious macros, or exploit staging).
+==================================================
+DECISION PROCESS
+==================================================
 
-Respond ONLY with a valid JSON object in this exact schema (no markdown, no backticks, no explanations outside JSON):
-{{
+Before assigning a verdict, ask:
+
+1. What is the actual detected file type?
+2. Are the suspicious strings merely text, or is there evidence of actual
+   malicious functionality?
+3. Are there multiple independent indicators supporting malicious behavior?
+4. Could the observed characteristics reasonably occur in a legitimate file?
+5. Is there enough evidence to justify calling the file MALICIOUS?
+
+If the answer to the final question is NO, do not classify the file as
+MALICIOUS.
+
+==================================================
+VERDICT GUIDELINES
+==================================================
+
+SAFE:
+No meaningful evidence of malicious behavior.
+
+SUSPICIOUS:
+Some genuine security concerns exist, but malicious behavior cannot be
+established confidently.
+
+MALICIOUS:
+Strong and specific evidence indicates malicious behavior.
+
+Do NOT use MALICIOUS simply because several suspicious-looking words appear
+in the extracted text.
+
+==================================================
+THREAT SCORE
+==================================================
+
+0-29:
+Little or no evidence of malicious behavior.
+
+30-59:
+Some potentially suspicious characteristics, but insufficient evidence of
+malware.
+
+60-79:
+Strong enough evidence to warrant investigation.
+
+80-100:
+Strong and specific evidence of malicious behavior.
+
+A high score requires strong evidence. Do not give a high score simply because
+many security-related words appear in the extracted text.
+
+==================================================
+OUTPUT
+==================================================
+
+Return ONLY valid JSON.
+
+{
   "verdict": "SAFE" or "SUSPICIOUS" or "MALICIOUS",
   "threat_score": <number from 0 to 100>,
   "confidence": <number from 0 to 100>,
-  "reason": "<one or two sentences explaining your security assessment>",
+  "reason": "<one or two sentences based only on the supplied evidence>",
   "flagged_traits": ["<trait 1>", "<trait 2>"]
-}}
+}
 """
+
     try:
-        raw_response = llm.invoke(system_prompt).strip()
-        # Clean potential markdown wrapping
-        cleaned = re.sub(r"^```json\s*", "", raw_response)
-        cleaned = re.sub(r"^```\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
-        result = json.loads(cleaned)
-        return result
-    except Exception as e:
+        raw_response = llm.invoke(system_prompt)
+
+        if isinstance(raw_response, dict):
+            candidate = raw_response.get("content") or raw_response.get("text") or json.dumps(raw_response)
+        else:
+            candidate = str(raw_response)
+
+        candidate = (candidate or "").strip()
+        if not candidate:
+            raise ValueError("Empty model response")
+
+        candidate = re.sub(r"^```(?:json)?\s*", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"\s*```\s*$", "", candidate, flags=re.IGNORECASE)
+        candidate = candidate.strip()
+
+        match = re.search(r"\{.*\}", candidate, flags=re.DOTALL)
+        if match:
+            candidate = match.group(0)
+
+        try:
+            result = json.loads(candidate)
+        except json.JSONDecodeError:
+            cleaned = candidate.replace("\t", " ")
+            try:
+                result = json.loads(cleaned)
+            except json.JSONDecodeError:
+                raise ValueError("Malformed JSON returned by AI")
+
+        if not isinstance(result, dict):
+            raise ValueError("AI returned a non-object JSON value")
+
+        verdict = str(result.get("verdict", "")).upper()
+        if verdict not in {"SAFE", "SUSPICIOUS", "MALICIOUS", "ANALYSIS_ERROR"}:
+            raise ValueError("Invalid verdict returned by AI")
+
+        try:
+            threat_score = int(float(result.get("threat_score", 0)))
+        except (TypeError, ValueError):
+            threat_score = 0
+        threat_score = max(0, min(100, threat_score))
+
+        try:
+            confidence = int(float(result.get("confidence", 0)))
+        except (TypeError, ValueError):
+            confidence = 0
+        confidence = max(0, min(100, confidence))
+
+        reason = result.get("reason", "")
+        if not isinstance(reason, str):
+            reason = "Security assessment based on static-analysis evidence."
+        reason = reason.strip()[:300] or "Security assessment based on static-analysis evidence."
+
+        flagged_traits = result.get("flagged_traits", [])
+        if not isinstance(flagged_traits, list):
+            flagged_traits = []
+        flagged_traits = [str(item) for item in flagged_traits[:10] if str(item).strip()]
+
         return {
-            "verdict": "SUSPICIOUS",
-            "threat_score": 50,
-            "confidence": 40,
-            "reason": f"AI triage parser encountered an issue: {str(e)}. Proceeding with caution.",
-            "flagged_traits": ["LLM evaluation parse error"]
+            "verdict": verdict,
+            "threat_score": threat_score,
+            "confidence": confidence,
+            "reason": reason,
+            "flagged_traits": flagged_traits,
         }
+
+    except Exception:
+        return {
+            "verdict": "ANALYSIS_ERROR",
+            "threat_score": 0,
+            "confidence": 0,
+            "reason": "AI returned an invalid response; static-analysis results remain available.",
+            "flagged_traits": ["LLM returned invalid JSON"],
+        }
+
+def analyze_xlsx_static(data: bytes) -> dict:
+    result = {
+        "available": False,
+        "macro": False,
+        "embedded_objects": False,
+        "external_links": False,
+        "dde": False,
+        "excel_4_macro_sheets": False,
+        "add_in": False,
+        "urls": [],
+        "indicators": [],
+    }
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data), "r") as z:
+            names = z.namelist()
+            result["available"] = True
+
+            # VBA macro project detection
+            if any(name.lower().endswith("vbaProject.bin".lower()) for name in names):
+                result["macro"] = True
+                result["indicators"].append(
+                    "XLSX VBA macro project detected"
+                )
+
+            # Embedded OLE/object detection
+            if any(
+                name.lower().startswith("xl/embeddings/")
+                for name in names
+            ):
+                result["embedded_objects"] = True
+                result["indicators"].append(
+                    "XLSX embedded objects detected"
+                )
+
+            # Excel 4.0 macro sheet detection
+            if any(
+                name.lower().startswith("xl/macrosheets/")
+                for name in names
+            ):
+                result["excel_4_macro_sheets"] = True
+                result["indicators"].append(
+                    "Excel 4.0 macro sheet detected"
+                )
+
+            # Excel add-in content detection
+            if any(
+                name.lower().startswith("xl/addins/")
+                for name in names
+            ):
+                result["add_in"] = True
+                result["indicators"].append(
+                    "Excel add-in content detected"
+                )
+
+            # External relationship and URL detection
+            for name in names:
+                if not name.lower().endswith(".rels"):
+                    continue
+
+                content = z.read(name).decode(
+                    "utf-8",
+                    errors="ignore"
+                )
+
+                if 'TargetMode="External"' in content:
+                    result["external_links"] = True
+                    result["indicators"].append(
+                        "XLSX external relationship detected"
+                    )
+
+                urls = re.findall(
+                    r'https?://[^\s"<>\']+',
+                    content,
+                    flags=re.IGNORECASE
+                )
+
+                for url in urls:
+                    if (
+                        "schemas.openxmlformats.org" not in url
+                        and "schemas.microsoft.com" not in url
+                        and url not in result["urls"]
+                    ):
+                        result["urls"].append(url)
+
+            # Search worksheet/formula XML for DDE indicators
+            for name in names:
+                lower_name = name.lower()
+
+                if not (
+                    lower_name.endswith(".xml")
+                    and (
+                        lower_name.startswith("xl/worksheets/")
+                        or lower_name.startswith("xl/charts/")
+                    )
+                ):
+                    continue
+
+                content = z.read(name).decode(
+                    "utf-8",
+                    errors="ignore"
+                )
+
+                lower_content = content.lower()
+
+                if (
+                    "ddeauto" in lower_content
+                    or "dde" in lower_content
+                    and "instrtext" in lower_content
+                ):
+                    result["dde"] = True
+                    result["indicators"].append(
+                        "XLSX DDE-related formula content detected"
+                    )
+
+            result["indicators"] = list(
+                dict.fromkeys(result["indicators"])
+            )
+
+            return result
+
+    except Exception:
+        return result
+
+def analyze_pptx_static(data: bytes) -> dict:
+    """Inspect PPTX package structures without assigning a malware verdict."""
+    result = {
+        "available": False,
+        "macro": False,
+        "embedded_objects": False,
+        "external_links": False,
+        "actions": False,
+        "urls": [],
+        "indicators": [],
+    }
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data), "r") as z:
+            names = z.namelist()
+            result["available"] = True
+
+            if any(name.lower().endswith("vbaproject.bin") for name in names):
+                result["macro"] = True
+                result["indicators"].append("PPTX VBA macro project detected")
+
+            if any(name.lower().startswith("ppt/embeddings/") for name in names):
+                result["embedded_objects"] = True
+                result["indicators"].append("PPTX embedded objects detected")
+
+            for name in names:
+                if not name.lower().endswith(".rels"):
+                    continue
+
+                content = z.read(name).decode("utf-8", errors="ignore")
+                if 'TargetMode="External"' in content:
+                    result["external_links"] = True
+                    result["indicators"].append(
+                        "PPTX external relationship detected"
+                    )
+
+                for url in re.findall(
+                    r"https?://[^\s\"'<>]+", content, flags=re.IGNORECASE
+                ):
+                    if (
+                        "schemas.openxmlformats.org" not in url.lower()
+                        and "schemas.microsoft.com" not in url.lower()
+                        and url not in result["urls"]
+                    ):
+                        result["urls"].append(url)
+
+            for name in names:
+                lower_name = name.lower()
+                if not (
+                    lower_name.startswith("ppt/slides/")
+                    or lower_name.startswith("ppt/slidemasters/")
+                    or lower_name == "ppt/presentation.xml"
+                ):
+                    continue
+
+                content = z.read(name).decode("utf-8", errors="ignore")
+                if any(
+                    marker in content.lower()
+                    for marker in (
+                        "hlinkclick",
+                        "<p:action",
+                        "<p14:action",
+                        "oleobject",
+                    )
+                ):
+                    result["actions"] = True
+                    result["indicators"].append(
+                        "PPTX action or hyperlink element detected"
+                    )
+
+            result["indicators"] = list(dict.fromkeys(result["indicators"]))
+            return result
+
+    except Exception as exc:
+        result["reason"] = f"PPTX parsing failed: {exc}"
+        return result
 
 def run_full_triage(data: bytes, filename: str) -> Dict[str, Any]:
     """
@@ -271,23 +2030,177 @@ def run_full_triage(data: bytes, filename: str) -> Dict[str, Any]:
     # 3. Tier 2: Heuristics & Entropy
     entropy = calculate_entropy(data)
     indicators = extract_suspicious_indicators(data)
+    yara_matches = scan_yara(data)
+
+    pdf_analysis = None
+
+    if (
+        type_info["actual_type"].lower() == "pdf"
+        or type_info["mime_type"].lower() == "application/pdf"
+    ):
+        pdf_analysis = analyze_pdf_static(data)
+
+        indicators.extend(pdf_analysis.get("indicators", []))
+
+    docx_analysis = None
+
+    if (
+        type_info["actual_type"].lower() == "docx"
+        or type_info["mime_type"].lower()
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ):
+        docx_analysis = analyze_docx_static(data)
+
+        indicators.extend(
+            docx_analysis.get("indicators", [])
+        )
+
+    xlsx_analysis = None
+
+    if (
+        type_info["actual_type"].lower() == "xlsx"
+        or type_info["mime_type"].lower()
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ):
+        xlsx_analysis = analyze_xlsx_static(data)
+
+        indicators.extend(
+            xlsx_analysis.get("indicators", [])
+        )
+
+    pptx_analysis = None
+
+    if (
+        type_info["actual_type"].lower() == "pptx"
+        or type_info["mime_type"].lower()
+        == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ):
+        pptx_analysis = analyze_pptx_static(data)
+
+        indicators.extend(
+            pptx_analysis.get("indicators", [])
+        )
+
+    actual_type = type_info["actual_type"].lower()
+    mime_type = type_info["mime_type"].lower()
+    is_javascript_file = (
+        actual_type in {"javascript", "js"}
+        or mime_type in {
+            "application/javascript",
+            "text/javascript",
+            "application/x-javascript",
+        }
+    )
+    office_package_detected = (
+        actual_type in {"docx", "xlsx", "pptx"}
+        or mime_type in {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+    )
+    is_zip_archive = (
+        not office_package_detected
+        and (
+            actual_type in {"zip", "zip archive"}
+            or mime_type in {"application/zip", "application/x-zip-compressed"}
+            or zipfile.is_zipfile(io.BytesIO(data))
+        )
+    )
+
+    zip_analysis = None
+
+    if is_zip_archive:
+        zip_analysis = analyze_zip_static(data)
+        indicators.extend(zip_analysis.get("indicators", []))
+
+    svg_analysis = None
+    is_svg_file = (
+        not is_javascript_file
+        and (
+            actual_type in {"svg", "svg+xml"}
+            or mime_type == "image/svg+xml"
+        )
+    )
+
+    if is_svg_file:
+        svg_analysis = analyze_svg_static(data)
+        indicators.extend(svg_analysis.get("indicators", []))
+
+    html_analysis = None
+    is_html_file = (
+        not is_javascript_file
+        and
+        not is_svg_file
+        and not office_package_detected
+        and not is_zip_archive
+        and (
+            actual_type == "html"
+            or mime_type == "text/html"
+        )
+    )
+
+    if is_html_file:
+        html_analysis = analyze_html_static(data)
+        indicators.extend(html_analysis.get("indicators", []))
+
+    image_analysis = None
+    image_types = {"jpeg", "jpg", "png", "gif", "bmp", "tiff", "webp"}
+    is_image_file = (
+        not is_javascript_file
+        and
+        not is_svg_file
+        and not is_html_file
+        and (
+            actual_type in image_types
+            or mime_type.startswith("image/")
+        )
+    )
+
+    if is_image_file:
+        image_analysis = analyze_image_static(data)
+        indicators.extend(image_analysis.get("indicators", []))
+
+    javascript_analysis = None
+    if is_javascript_file:
+        javascript_analysis = analyze_javascript_static(data)
+        indicators.extend(javascript_analysis.get("indicators", []))
+
+    lief_analysis = None
+    interesting_imports = []
+
+
+    if type_info["is_executable"]:
+        lief_analysis = analyze_executable_lief(data)
+        interesting_imports = extract_interesting_imports(lief_analysis)
     
     context = {
+        "interesting_imports": interesting_imports,
         "claimed_extension": type_info["claimed_extension"],
         "actual_type": type_info["actual_type"],
         "mime_type": type_info["mime_type"],
         "entropy": entropy,
-        "indicators": indicators
+        "indicators": indicators,
+        "yara_matches": yara_matches,
+        "pdf_analysis": pdf_analysis,
+        "docx_analysis": docx_analysis,
+        "xlsx_analysis": xlsx_analysis,
+        "pptx_analysis": pptx_analysis,
+        "zip_analysis": zip_analysis,
+        "image_analysis": image_analysis,
+        "svg_analysis": svg_analysis,
+        "html_analysis": html_analysis,
+        "javascript_analysis": javascript_analysis,
+        "lief_analysis": lief_analysis,
     }
 
     # Criteria to invoke Tier 3 AI Specialist:
-    # - Suspicious heuristics found (e.g. powershell, eval, memory allocation APIs)
-    # - High entropy (> 7.2) on script/text/document files (suggests obfuscation/packer)
-    # - Executable file format transferred unexpectedly
+    # - Suspicious heuristics found
+    # - Executable file format detected
+    # - High entropy is retained as supporting evidence, not an automatic trigger
     needs_ai_triage = (
-        len(indicators) > 0 or 
-        (entropy > 7.2 and type_info["actual_type"] not in {"zip", "gz", "tar", "mp4", "mp3", "jpg", "png"}) or
-        type_info["is_executable"]
+        len(indicators) > 0 or
+        len(yara_matches) > 0
     )
 
     llm_result = None
@@ -296,20 +2209,123 @@ def run_full_triage(data: bytes, filename: str) -> Dict[str, Any]:
 
     if needs_ai_triage:
         llm_result = llm_worst_case_analysis(data, filename, context)
-        if llm_result.get("verdict") == "MALICIOUS" or llm_result.get("threat_score", 0) >= 70:
-            final_verdict = "MALICIOUS"
-            status = "REJECTED"
-        elif llm_result.get("verdict") == "SUSPICIOUS" or llm_result.get("threat_score", 0) >= 40:
+
+    if needs_ai_triage and not llm_result:
+        final_verdict = "ANALYSIS_ERROR"
+        status = "ANALYSIS_ERROR"
+
+    elif llm_result is None:
+        final_verdict = "SAFE"
+        status = "APPROVED"
+
+    elif llm_result.get("verdict") == "SAFE":
+        docx_macro_detected = (
+            type_info["actual_type"].lower() == "docx"
+            and docx_analysis
+            and docx_analysis.get("macro") is True
+        )
+
+        xlsx_macro_detected = (
+            type_info["actual_type"].lower() == "xlsx"
+            and xlsx_analysis
+            and xlsx_analysis.get("macro") is True
+        )
+
+        pptx_macro_detected = (
+            type_info["actual_type"].lower() == "pptx"
+            and pptx_analysis
+            and pptx_analysis.get("macro") is True
+        )
+
+        if docx_macro_detected or xlsx_macro_detected or pptx_macro_detected:
+            final_verdict = "SUSPICIOUS"
+            status = "QUARANTINE"
+        else:
+            final_verdict = "SAFE"
+            status = "APPROVED"
+
+    elif llm_result.get("verdict") == "MALICIOUS":
+        final_verdict = "MALICIOUS"
+        status = "REJECTED"
+
+    elif llm_result.get("verdict") == "SUSPICIOUS":
+        non_docx_indicators = [
+            indicator
+            for indicator in indicators
+            if indicator != "DOCX external relationship detected"
+        ]
+
+        docx_only_external_link = (
+            type_info["actual_type"].lower() == "docx"
+            and docx_analysis
+            and docx_analysis.get("external_links") is True
+            and not docx_analysis.get("macro")
+            and not docx_analysis.get("embedded_objects")
+            and not docx_analysis.get("dde")
+            and not yara_matches
+            and not non_docx_indicators
+            and not interesting_imports
+        )
+
+        xlsx_only_external_link = (
+            type_info["actual_type"].lower() == "xlsx"
+            and xlsx_analysis
+            and xlsx_analysis.get("external_links") is True
+            and not xlsx_analysis.get("macro")
+            and not xlsx_analysis.get("embedded_objects")
+            and not xlsx_analysis.get("dde")
+            and not xlsx_analysis.get("excel_4_macro_sheets")
+            and not xlsx_analysis.get("add_in")
+            and not yara_matches
+            and not interesting_imports
+            and indicators == ["XLSX external relationship detected"]
+        )
+
+        pptx_only_external_link = (
+            type_info["actual_type"].lower() == "pptx"
+            and pptx_analysis
+            and pptx_analysis.get("external_links") is True
+            and not pptx_analysis.get("macro")
+            and not pptx_analysis.get("embedded_objects")
+            and not pptx_analysis.get("actions")
+            and not yara_matches
+            and not interesting_imports
+            and indicators == ["PPTX external relationship detected"]
+        )
+
+        if docx_only_external_link or xlsx_only_external_link or pptx_only_external_link:
+            final_verdict = "SAFE"
+            status = "APPROVED"
+        else:
             final_verdict = "SUSPICIOUS"
             status = "QUARANTINE"
 
+    elif llm_result.get("verdict") == "ANALYSIS_ERROR":
+        final_verdict = "ANALYSIS_ERROR"
+        status = "ANALYSIS_ERROR"
+    else:
+        final_verdict = "ANALYSIS_ERROR"
+        status = "ANALYSIS_ERROR"
+
     return {
+        "interesting_imports": interesting_imports,
         "status": status,
         "verdict": final_verdict,
         "stage": "TIER_3_AI_TRIAGE" if needs_ai_triage else "TIER_2_PASSED",
         "file_info": type_info,
         "entropy": entropy,
         "indicators": indicators,
+        "yara_matches": yara_matches,
+        "pdf_analysis": pdf_analysis,
+        "docx_analysis": docx_analysis,
+        "xlsx_analysis": xlsx_analysis,
+        "pptx_analysis": pptx_analysis,
+        "zip_analysis": zip_analysis,
+        "image_analysis": image_analysis,
+        "svg_analysis": svg_analysis,
+        "html_analysis": html_analysis,
+        "javascript_analysis": javascript_analysis,
+        "lief_analysis": lief_analysis,
         "clamav_status": "CLEAN" if not clam_threat else clam_threat,
         "ai_triage": llm_result
     }

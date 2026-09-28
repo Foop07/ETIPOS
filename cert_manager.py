@@ -1,12 +1,14 @@
 import os
 import socket
 import datetime
+import ctypes
 from typing import Tuple
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+from cryptography.fernet import Fernet
 import ipaddress
 
 CERT_FILE = os.path.join(os.path.dirname(__file__), "cert.pem")
@@ -94,4 +96,3 @@ if __name__ == "__main__":
     print(f"Generated SSL Certificate at: {c_path}")
     print(f"Generated SSL Private Key at: {k_path}")
     print(f"Detected Local IP: {ip}")
-
