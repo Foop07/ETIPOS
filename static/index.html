@@ -3,561 +3,288 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ETIPOS | Secure Local Relay</title>
-  <style>
-    :root {
-      --bg: #0b0f19;
-      --card: #121826;
-      --card-border: #1e293b;
-      --accent: #06b6d4;
-      --accent-glow: rgba(6, 182, 212, 0.25);
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    }
-    body {
-      background-color: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 16px;
-    }
-    .header {
-      width: 100%;
-      max-width: 460px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 0 20px 0;
-      border-bottom: 1px solid var(--card-border);
-      margin-bottom: 20px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 700;
-      font-size: 1.15rem;
-      letter-spacing: 0.5px;
-    }
-    .brand-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 10px var(--accent);
-    }
-    .status-badge {
-      font-size: 0.75rem;
-      padding: 4px 8px;
-      border-radius: 12px;
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--success);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .container {
-      width: 100%;
-      max-width: 460px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      background: var(--card);
-      border-radius: 12px;
-      padding: 4px;
-      border: 1px solid var(--card-border);
-    }
-    .tab-btn {
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .tab-btn.active {
-      background: var(--accent);
-      color: #04131d;
-      box-shadow: 0 0 12px var(--accent-glow);
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-    }
-    .upload-zone {
-      border: 2px dashed #334155;
-      border-radius: 14px;
-      padding: 36px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      background: rgba(15, 23, 42, 0.4);
-    }
-    .upload-zone:hover, .upload-zone.dragover {
-      border-color: var(--accent);
-      background: rgba(6, 182, 212, 0.05);
-    }
-    .upload-icon {
-      font-size: 2.5rem;
-      margin-bottom: 12px;
-    }
-    .file-input {
-      display: none;
-    }
-    .btn {
-      width: 100%;
-      padding: 14px;
-      border-radius: 10px;
-      border: none;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      margin-top: 16px;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: #04131d;
-    }
-    .btn-primary:active {
-      transform: scale(0.98);
-    }
-    .pin-input-container {
-      margin: 20px 0;
-      text-align: center;
-    }
-    .pin-input {
-      width: 100%;
-      font-size: 2rem;
-      letter-spacing: 8px;
-      text-align: center;
-      background: #0f172a;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      color: var(--accent);
-      padding: 12px;
-      font-weight: 700;
-    }
-    .pin-input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 10px var(--accent-glow);
-    }
-    /* Radar Scanning Stages */
-    .scan-status {
-      display: none;
-      margin-top: 16px;
-      padding: 16px;
-      background: rgba(15, 23, 42, 0.6);
-      border-radius: 10px;
-      border: 1px solid var(--card-border);
-    }
-    .stage-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
-    .stage-item:last-child { margin-bottom: 0; }
-    .stage-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #475569;
-    }
-    .stage-item.running .stage-dot {
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
-      animation: pulse 1s infinite alternate;
-    }
-    .stage-item.done .stage-dot {
-      background: var(--success);
-      box-shadow: 0 0 8px var(--success);
-    }
-    .stage-item.done { color: var(--text); }
-    @keyframes pulse {
-      from { opacity: 0.4; }
-      to { opacity: 1; }
-    }
-    /* Transfer Success Panel */
-    .result-panel {
-      display: none;
-      text-align: center;
-    }
-    .pin-display {
-      font-size: 2.8rem;
-      font-weight: 800;
-      color: var(--accent);
-      letter-spacing: 6px;
-      margin: 12px 0;
-      text-shadow: 0 0 15px var(--accent-glow);
-    }
-    .qr-box {
-      margin: 16px auto;
-      padding: 12px;
-      background: white;
-      border-radius: 12px;
-      width: 200px;
-      height: 200px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .qr-box img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-    .meta-box {
-      background: #0f172a;
-      border-radius: 10px;
-      padding: 12px;
-      font-size: 0.82rem;
-      text-align: left;
-      margin-top: 14px;
-      border: 1px solid var(--card-border);
-    }
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-    }
-    .meta-row:last-child { margin-bottom: 0; }
-    .meta-label { color: var(--text-muted); }
-    .meta-val { color: var(--text); font-weight: 600; }
-    .alert-box {
-      display: none;
-      padding: 14px;
-      border-radius: 10px;
-      margin-top: 14px;
-      font-size: 0.9rem;
-    }
-    .alert-danger {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid var(--danger);
-      color: #fca5a5;
-    }
-    .alert-success {
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid var(--success);
-      color: #6ee7b7;
-    }
-    .countdown {
-      font-size: 0.8rem;
-      color: var(--warning);
-      margin-top: 10px;
-    }
-  </style>
+  <meta name="theme-color" content="#0a0a0c" />
+  <title>etipos</title>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="header">
-    <div class="brand">
-      <div class="brand-dot"></div>
-      ETIPOS Fortress Relay
-    </div>
-    <div class="status-badge" id="healthBadge">
-      ● 3-Tier Guard Online
-    </div>
+
+  <!-- Ambient Wireframe Arcs (Matches subtle background circles in screenshot) -->
+  <div class="bg-ambient-arc" aria-hidden="true"></div>
+  <div class="bg-ambient-arc-2" aria-hidden="true"></div>
+
+  <!-- Top Editorial Intro (Matches "... /About project..." in screenshot) -->
+  <div class="editorial-intro">
+    <span class="intro-tag">... /About gateway ...</span>
+    <p class="intro-desc">
+      The task is to <strong>create a secure local relay for private file transfer</strong> that is modern, functional, and visually appealing. The gateway presents information about <em>security tiers, active transfers,</em> and <em>in-memory vault</em>, as well as contact-free wireless download for phones and laptops.
+    </p>
   </div>
 
-  <div class="container">
-    <div class="tabs">
-      <button class="tab-btn active" id="tabSend" onclick="switchTab('send')">📤 Send File</button>
-      <button class="tab-btn" id="tabRecv" onclick="switchTab('recv')">📥 Receive File</button>
-    </div>
+  <!-- Main App Frame Chassis (Matches rounded frame container in screenshot) -->
+  <div class="app-frame">
 
-    <!-- SENDER VIEW -->
-    <div class="card" id="sendCard">
-      <div id="uploadContainer">
-        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-          <div class="upload-icon">📁</div>
-          <h3 id="uploadPrompt">Tap to Select File</h3>
-          <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">
-            Encrypted in-transit & analyzed locally
+    <!-- Frame Header -->
+    <header class="frame-header">
+      <div class="frame-brand">
+        <h1 class="brand-title">etipos</h1>
+        <span class="brand-subtitle">fortress gateway</span>
+      </div>
+
+      <nav class="frame-nav">
+        <a class="nav-link active" id="navSend" href="javascript:void(0)">Send</a>
+        <a class="nav-link" id="navReceive" href="javascript:void(0)">Receive</a>
+        <a class="nav-link" id="navTiers" href="#pipeline">Tiers</a>
+        <a class="nav-link" id="navVault" href="javascript:void(0)">Vault</a>
+      </nav>
+
+      <div class="frame-actions">
+        <div class="lang-toggle">
+          <span class="active" id="modeIndicator">Send</span>
+          <span>/</span>
+          <span id="modeAltIndicator">Receive</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero Display Title Section (Matches "Full-stack Developer" & pill button) -->
+    <section class="hero-section">
+      <div class="hero-title-wrap">
+        <div class="hero-title-row-1">
+          <span class="hero-display">Secure</span>
+          <button class="hero-pill-btn" id="heroActionBtn" type="button">
+            <span id="heroActionText">Send file</span>
+            <span>→</span>
+          </button>
+        </div>
+        <div class="hero-title-row-2">
+          <span class="hero-display italic">Transfer</span>
+        </div>
+      </div>
+
+      <div class="hero-subtext-grid">
+        <p class="hero-subtext">
+          Our goal is to <strong>triage incoming payloads locally</strong>, preventing malware traversal with zero cloud routing, so peer-to-peer file sharing is private and trustworthy.
+        </p>
+      </div>
+
+      <!-- Pill Tags Row (Matches GitHub / LinkedIn pill row) -->
+      <div class="hero-tag-row">
+        <div class="tag-pill active">
+          <span class="tag-dot" id="magikaTagDot"></span>
+          <span>Tier 1 Magika</span>
+        </div>
+        <div class="tag-pill active">
+          <span class="tag-dot" id="clamTagDot"></span>
+          <span>Tier 2 ClamAV</span>
+        </div>
+        <div class="tag-pill active">
+          <span class="tag-dot" id="aiTagDot"></span>
+          <span>Tier 3 Qwen 2.5</span>
+        </div>
+        <div class="tag-pill">
+          <span>TLS 1.3 Local</span>
+        </div>
+        <div class="tag-pill">
+          <span>In-Memory RAM</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Carousel / Workbench Centerpiece (Matches 3-card carousel) -->
+    <section class="workbench-carousel">
+      
+      <!-- Left Side Card: Toggle to Receive -->
+      <div class="side-card" id="cardToggleReceive" title="Switch to Receive Mode">
+        <h4 class="side-card-title">Receive file</h4>
+        <p class="side-card-sub">Enter PIN or scan QR from sender</p>
+        <div class="circle-nav-btn">←</div>
+      </div>
+
+      <!-- Center Card: Primary Dropzone / Active Transfer -->
+      <div class="center-card" id="centerWorkspaceCard">
+        
+        <div class="center-card-visual" id="visualBox">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
+
+        <div class="center-card-content">
+          <span class="center-card-label" id="centerCardLabel">EPHEMERAL GATEWAY</span>
+          <h3 class="center-card-title" id="centerCardTitle">The simplest transfer is Wi-Fi + etipos</h3>
+          <p class="center-card-desc" id="centerCardDesc">
+            Drag & drop any document or binary to inspect byte signatures and stream safely across local devices.
           </p>
-          <input type="file" id="fileInput" class="file-input" onchange="handleFileSelect(event)" />
+
+          <input type="file" id="fileInput" hidden />
+
+          <div class="center-card-action">
+            <button class="btn-white-pill" id="btnSelectFile" type="button">
+              <span id="btnSelectText">Select file</span>
+              <span>→</span>
+            </button>
+            <button class="btn-circle-arrow" id="btnCircleAction" type="button" title="Browse device">
+              ↗
+            </button>
+          </div>
         </div>
 
-        <button class="btn btn-primary" id="btnUpload" style="display:none" onclick="startSecureUpload()">
-          Scan & Transfer Wirelessly
-        </button>
       </div>
 
-      <!-- Scanning Radar Progress -->
-      <div class="scan-status" id="scanStatus">
-        <div class="stage-item running" id="stage1">
-          <div class="stage-dot"></div>
-          <span>Tier 1: Disguise & Magic Header Check</span>
-        </div>
-        <div class="stage-item" id="stage2">
-          <div class="stage-dot"></div>
-          <span>Tier 2: ClamAV & Shannon Entropy Scan</span>
-        </div>
-        <div class="stage-item" id="stage3">
-          <div class="stage-dot"></div>
-          <span>Tier 3: Local AI Specialist Triage (Qwen 2.5)</span>
-        </div>
+      <!-- Right Side Card: Toggle to Send / Reset -->
+      <div class="side-card" id="cardToggleSend" title="Switch to Send Mode">
+        <h4 class="side-card-title">Send file</h4>
+        <p class="side-card-sub">Local 3-tier inspection pipeline</p>
+        <div class="circle-nav-btn">→</div>
       </div>
 
-      <!-- Error / Block Alert -->
-      <div class="alert-box alert-danger" id="blockAlert"></div>
+    </section>
 
-      <!-- Success Result Panel -->
-      <div class="result-panel" id="resultPanel">
-        <p style="color: var(--success); font-weight: 600; font-size: 0.95rem;">
-          Verified Safe & Ready for Relay
-        </p>
-        <div class="pin-display" id="pinDisplay">------</div>
-        <p style="font-size: 0.8rem; color: var(--text-muted);">
-          Scan QR with Phone B or enter 6-digit PIN:
-        </p>
-        <div class="qr-box">
-          <img id="qrImg" src="" alt="Transfer QR Code" />
+    <!-- Bento Grid Section (Matches middle column cards & portrait box) -->
+    <section class="bento-grid">
+      
+      <!-- Left Column -->
+      <div class="bento-column">
+        
+        <!-- Inverted White Card (Matches "Front-end" card in reference image) -->
+        <div class="card-inverted" id="bentoCardInverted">
+          <div class="card-inverted-header">
+            <h3 class="card-inverted-title" id="bentoInvertedTitle">Multi-Tier Triage</h3>
+            <span style="font-family: var(--font-mono); font-size: 11px; font-weight: 700;">INSPECTION</span>
+          </div>
+          <p class="card-inverted-body" id="bentoInvertedBody">
+            Deep content-type validation with Magika neural classifier / Multi-signature scanning with ClamAV / Local LLM analysis with Qwen 2.5 Coder
+          </p>
         </div>
-        <div class="countdown" id="countdownTimer">
-          Auto-destructs in 5m 00s
+
+        <!-- Dark Bento Card 1 -->
+        <div class="bento-subcard">
+          <div class="bento-subcard-header">
+            <h4 class="bento-subcard-title">Ephemeral Vault</h4>
+            <div class="btn-circle-arrow" style="width: 28px; height: 28px; font-size: 12px;">↗</div>
+          </div>
+          <p class="bento-subcard-body">
+            Files reside exclusively in gateway RAM. Once Phone B downloads the payload, it is expunged from memory immediately.
+          </p>
         </div>
-        <div class="meta-box" id="metaBox"></div>
-        <button class="btn btn-primary" style="margin-top:14px; background:#334155; color:white;" onclick="resetSender()">
-          Send Another File
-        </button>
-      </div>
-    </div>
 
-    <!-- RECEIVER VIEW -->
-    <div class="card" id="recvCard" style="display:none">
-      <h3 style="margin-bottom: 6px;">Retrieve Payload</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted);">
-        Enter the 6-digit PIN to download the verified file.
-      </p>
+        <!-- Dark Bento Card 2 -->
+        <div class="bento-subcard">
+          <div class="bento-subcard-header">
+            <h4 class="bento-subcard-title">Zero Cloud Routing</h4>
+            <div class="btn-circle-arrow" style="width: 28px; height: 28px; font-size: 12px;">↗</div>
+          </div>
+          <p class="bento-subcard-body">
+            All data transfers flow over the local Wi-Fi router. Traffic never exits to public servers or external trackers.
+          </p>
+        </div>
 
-      <div class="pin-input-container">
-        <input type="tel" maxlength="6" class="pin-input" id="recvPin" placeholder="••••••" />
       </div>
 
-      <button class="btn btn-primary" id="btnDownload" onclick="downloadPayload()">
-        Download & Auto-Shred
-      </button>
+      <!-- Right Column: Live PIN & QR Card (Matches portrait image card in screenshot) -->
+      <div class="bento-feature-box" id="bentoFeatureBox">
+        
+        <div>
+          <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">
+            TRANSFER CREDENTIAL
+          </span>
+          <h4 style="font-family: var(--font-serif); font-size: 1.5rem; color: #ffffff; margin-top: 4px;" id="featureTitle">
+            Ready to transfer
+          </h4>
+        </div>
 
-      <div class="alert-box alert-success" id="recvSuccess">
-        Payload downloaded successfully. Ephemeral copy instantly shredded from server memory.
+        <!-- Dynamic Content: QR Image (Default) or 6-Digit Inputs (Receive Mode) -->
+        <div id="featureDefaultView">
+          <div class="qr-box-inner">
+            <img id="qrImage" src="/qr-portal" alt="Portal QR Code" />
+          </div>
+          <p class="pin-giant" id="pinDisplay">------</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;" id="featureCaption">
+            Scan with phone camera or enter PIN on receiver
+          </p>
+          <button class="btn-white-pill" id="btnCopyCredential" type="button" style="margin: 0 auto; display: none;">
+            <span>Copy Link</span>
+            <span>↗</span>
+          </button>
+        </div>
+
+        <!-- Dynamic Content: 6-Digit PIN Inputs (Active in Receive Mode) -->
+        <div id="featureReceiveView" class="hidden">
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px;">
+            Enter 6-digit access code:
+          </p>
+          <div class="pin-inputs-row">
+            <input class="pin-single-digit" id="d1" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" />
+            <input class="pin-single-digit" id="d2" type="text" inputmode="numeric" maxlength="1" />
+            <input class="pin-single-digit" id="d3" type="text" inputmode="numeric" maxlength="1" />
+            <span style="color: var(--text-dim); display: flex; align-items: center;">—</span>
+            <input class="pin-single-digit" id="d4" type="text" inputmode="numeric" maxlength="1" />
+            <input class="pin-single-digit" id="d5" type="text" inputmode="numeric" maxlength="1" />
+            <input class="pin-single-digit" id="d6" type="text" inputmode="numeric" maxlength="1" />
+          </div>
+          <button class="btn-white-pill" id="btnDownloadTrigger" type="button" disabled style="margin: 0 auto;">
+            <span>Download file</span>
+            <span>↓</span>
+          </button>
+          <p id="receiveAlert" style="font-size: 0.8rem; color: var(--danger-red); margin-top: 10px;" class="hidden">
+            Invalid or expired PIN.
+          </p>
+        </div>
+
+        <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-top: 14px;">
+          ETIPOS SECURE NODE
+        </div>
+
       </div>
-      <div class="alert-box alert-danger" id="recvError"></div>
-    </div>
+
+    </section>
+
+    <!-- Bottom Section: "Work" / Pipeline List (Matches "Work" section in image) -->
+    <section class="pipeline-section" id="pipeline">
+      <h2 class="pipeline-title">Pipeline</h2>
+
+      <div class="pipeline-list">
+        
+        <div class="pipeline-row">
+          <span class="pipeline-row-col1">Tier 1 • Magika</span>
+          <span class="pipeline-row-col2">Neural Type Classifier</span>
+          <span class="pipeline-row-col3">Byte-level format & polyglot verification</span>
+        </div>
+
+        <!-- Highlighted Row (Matches VK Development Lab white row) -->
+        <div class="pipeline-row highlighted">
+          <span class="pipeline-row-col1">Tier 2 • ClamAV</span>
+          <span class="pipeline-row-col2">Antivirus Engine</span>
+          <span class="pipeline-row-col3">Multi-engine signature matching & trojan scan</span>
+        </div>
+
+        <div class="pipeline-row">
+          <span class="pipeline-row-col1">Tier 3 • Qwen 2.5</span>
+          <span class="pipeline-row-col2">Local AI Specialist</span>
+          <span class="pipeline-row-col3">Deep heuristic intent & script de-obfuscation</span>
+        </div>
+
+        <div class="pipeline-row">
+          <span class="pipeline-row-col1">Tier 4 • Ephemeral</span>
+          <span class="pipeline-row-col2">In-Memory Vault</span>
+          <span class="pipeline-row-col3">AES buffer relay • Expunged automatically on retrieval</span>
+        </div>
+
+      </div>
+
+      <div class="pipeline-footer-info">
+        <div>
+          Security Inspection<br>
+          3 tiers online & active
+        </div>
+      </div>
+    </section>
+
   </div>
 
-  <script>
-    let selectedFile = null;
-    let countdownInterval = null;
-
-    // Check query params for prefilled PIN from QR code
-    window.addEventListener('DOMContentLoaded', () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const pinParam = urlParams.get('pin');
-      if (pinParam) {
-        switchTab('recv');
-        document.getElementById('recvPin').value = pinParam;
-      }
-    });
-
-    function switchTab(tab) {
-      document.getElementById('tabSend').classList.toggle('active', tab === 'send');
-      document.getElementById('tabRecv').classList.toggle('active', tab === 'recv');
-      document.getElementById('sendCard').style.display = tab === 'send' ? 'block' : 'none';
-      document.getElementById('recvCard').style.display = tab === 'recv' ? 'block' : 'none';
-    }
-
-    function handleFileSelect(e) {
-      if (e.target.files.length > 0) {
-        selectedFile = e.target.files[0];
-        document.getElementById('uploadPrompt').innerText = selectedFile.name;
-        document.getElementById('btnUpload').style.display = 'flex';
-      }
-    }
-
-    async function startSecureUpload() {
-      if (!selectedFile) return;
-
-      const btn = document.getElementById('btnUpload');
-      btn.disabled = true;
-      btn.innerText = "Analyzing Payload...";
-
-      document.getElementById('scanStatus').style.display = 'block';
-      document.getElementById('blockAlert').style.display = 'none';
-      document.getElementById('resultPanel').style.display = 'none';
-
-      const s1 = document.getElementById('stage1');
-      const s2 = document.getElementById('stage2');
-      const s3 = document.getElementById('stage3');
-
-      s1.className = 'stage-item running';
-      s2.className = 'stage-item';
-      s3.className = 'stage-item';
-
-      setTimeout(() => { s1.className = 'stage-item done'; s2.className = 'stage-item running'; }, 600);
-      setTimeout(() => { s2.className = 'stage-item done'; s3.className = 'stage-item running'; }, 1200);
-
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      try {
-        const response = await fetch('/transfer', {
-          method: 'POST',
-          body: formData
-        });
-
-        const data = await response.json();
-        s3.className = 'stage-item done';
-
-        if (!response.ok) {
-          showBlockAlert(data.detail?.message || "File flagged as malicious.", data.detail?.reason || "Security policy violation.");
-          btn.disabled = false;
-          btn.innerText = "Scan & Transfer Wirelessly";
-          return;
-        }
-
-        // Show Result
-        document.getElementById('uploadContainer').style.display = 'none';
-        document.getElementById('scanStatus').style.display = 'none';
-        document.getElementById('resultPanel').style.display = 'block';
-        document.getElementById('pinDisplay').innerText = data.pin;
-        document.getElementById('qrImg').src = `/qr/${data.pin}`;
-
-        const metaBox = document.getElementById('metaBox');
-        metaBox.innerHTML = `
-          <div class="meta-row"><span class="meta-label">File:</span><span class="meta-val">${data.filename}</span></div>
-          <div class="meta-row"><span class="meta-label">Detected Type:</span><span class="meta-val">${data.triage?.file_info?.actual_type || 'Verified'}</span></div>
-          <div class="meta-row"><span class="meta-label">Size:</span><span class="meta-val">${(data.size_bytes / 1024).toFixed(1)} KB</span></div>
-          <div class="meta-row"><span class="meta-label">Entropy:</span><span class="meta-val">${data.triage?.entropy || 'Normal'}</span></div>
-          <div class="meta-row"><span class="meta-label">Antivirus:</span><span class="meta-val" style="color:var(--success)">${data.triage?.clamav_status || 'Clean'}</span></div>
-        `;
-
-        startCountdown(data.expires_in_seconds || 300);
-
-      } catch (err) {
-        showBlockAlert("Network Error", "Unable to communicate with local fortress server.");
-        btn.disabled = false;
-        btn.innerText = "Scan & Transfer Wirelessly";
-      }
-    }
-
-    function showBlockAlert(title, reason) {
-      const el = document.getElementById('blockAlert');
-      el.innerHTML = `<strong>⚠️ ${title}</strong><br><span style="font-size:0.8rem">${reason}</span>`;
-      el.style.display = 'block';
-    }
-
-    function startCountdown(seconds) {
-      clearInterval(countdownInterval);
-      let rem = seconds;
-      countdownInterval = setInterval(() => {
-        rem--;
-        if (rem <= 0) {
-          clearInterval(countdownInterval);
-          document.getElementById('countdownTimer').innerText = "Expired & shredded.";
-        } else {
-          const m = Math.floor(rem / 60);
-          const s = rem % 60;
-          document.getElementById('countdownTimer').innerText = `Auto-destructs in ${m}m ${s < 10 ? '0' : ''}${s}s`;
-        }
-      }, 1000);
-    }
-
-    function resetSender() {
-      clearInterval(countdownInterval);
-      selectedFile = null;
-      document.getElementById('fileInput').value = '';
-      document.getElementById('uploadPrompt').innerText = 'Tap to Select File';
-      document.getElementById('btnUpload').style.display = 'none';
-      document.getElementById('btnUpload').disabled = false;
-      document.getElementById('btnUpload').innerText = 'Scan & Transfer Wirelessly';
-      document.getElementById('uploadContainer').style.display = 'block';
-      document.getElementById('scanStatus').style.display = 'none';
-      document.getElementById('resultPanel').style.display = 'none';
-      document.getElementById('blockAlert').style.display = 'none';
-    }
-
-    async function downloadPayload() {
-      const pin = document.getElementById('recvPin').value.trim();
-      const errEl = document.getElementById('recvError');
-      const succEl = document.getElementById('recvSuccess');
-      errEl.style.display = 'none';
-      succEl.style.display = 'none';
-
-      if (!pin || pin.length !== 6) {
-        errEl.innerText = "Please enter a valid 6-digit PIN.";
-        errEl.style.display = 'block';
-        return;
-      }
-
-      const btn = document.getElementById('btnDownload');
-      btn.disabled = true;
-      btn.innerText = "Retrieving Payload...";
-
-      try {
-        const response = await fetch(`/download/${pin}`);
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.detail || "Invalid or expired PIN.");
-        }
-
-        // Get filename from header
-        let filename = "payload.bin";
-        const disposition = response.headers.get('Content-Disposition');
-        if (disposition && disposition.includes('filename=')) {
-          const match = disposition.match(/filename="?([^"]+)"?/);
-          if (match && match[1]) filename = match[1];
-        }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-
-        succEl.style.display = 'block';
-        document.getElementById('recvPin').value = '';
-      } catch (err) {
-        errEl.innerText = err.message;
-        errEl.style.display = 'block';
-      } finally {
-        btn.disabled = false;
-        btn.innerText = "Download & Auto-Shred";
-      }
-    }
-  </script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
-
