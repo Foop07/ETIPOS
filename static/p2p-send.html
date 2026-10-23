@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETIPOS P2P - Send File</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            background: #e8ebff;
+            border-color: #764ba2;
+        }
+        
+        .upload-area.dragover {
+            background: #d8ddff;
+            border-color: #764ba2;
+            transform: scale(1.02);
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-container {
+            display: none;
+            margin: 30px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .status-message {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status-message.scanning {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+        
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        
+        .result-container {
+            display: none;
+            margin-top: 30px;
+            padding: 30px;
+            background: #f8f9ff;
+            border-radius: 8px;
+        }
+        
+        .pin-display {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .pin {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .magnet-link {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            word-break: break-all;
+            font-size: 12px;
+            font-family: monospace;
+            border: 1px solid #ddd;
+            margin: 20px 0;
+        }
+        
+        .email-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #ddd;
+        }
+        
+        input[type="email"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .qr-code img {
+            max-width: 200px;
+            border: 5px solid white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .copy-button {
+            background: #28a745;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+        
+        .success-message {
+            display: none;
+            padding: 15px;
+            background: #d4edda;
+            color: #155724;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .file-info {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 ETIPOS P2P File Transfer</h1>
+        <p class="subtitle">Send files securely with peer-to-peer technology</p>
+        
+        <!-- Upload Section -->
+        <div id="upload-section">
+            <div class="upload-area" id="upload-area">
+                <div class="upload-icon">📁</div>
+                <h3>Drag & Drop File Here</h3>
+                <p>or click to browse</p>
+                <p style="font-size: 12px; color: #999;">Max file size: 2GB</p>
+                <input type="file" id="file-input" accept="*/*">
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button type="submit" id="upload-button" style="display: none;">Upload & Scan File</button>
+            </div>
+        </div>
+        
+        <!-- Progress Section -->
+        <div class="progress-container" id="progress-container">
+            <div class="spinner" id="spinner"></div>
+            <div class="status-message" id="status-message"></div>
+            <div class="progress-bar" id="progress-bar" style="display: none;">
+                <div class="progress-fill" id="progress-fill">0%</div>
+            </div>
+        </div>
+        
+        <!-- Result Section -->
+        <div class="result-container" id="result-container">
+            <h2 style="text-align: center; color: #667eea;">✅ File Ready for Transfer!</h2>
+            
+            <div class="file-info" id="file-info"></div>
+            
+            <div class="pin-display">
+                <p style="margin: 0; color: #666;">Transfer PIN</p>
+                <div class="pin" id="pin"></div>
+            </div>
+            
+            <div class="magnet-link">
+                <strong>Magnet Link:</strong><br>
+                <span id="magnet-link"></span>
+            </div>
+            
+            <div style="text-align: center;">
+                <button class="copy-button" id="copy-magnet">📋 Copy Magnet Link</button>
+                <button class="copy-button" id="copy-pin">📋 Copy PIN</button>
+            </div>
+            
+            <!-- Email Section -->
+            <div class="email-section">
+                <h3>📧 Send Link via Email</h3>
+                <input type="email" id="email-input" placeholder="recipient@example.com">
+                <div style="text-align: center;">
+                    <button id="send-email-button">Send Email</button>
+                </div>
+                <div class="success-message email-sent" id="email-success"></div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px;">
+                <button id="send-another" style="background: #6c757d;">Send Another File</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
+    <script>
+        let selectedFile = null;
+        let currentPin = null;
+        let currentMagnetLink = null;
+        let wtClient = null;
+        
+        // DOM elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadButton = document.getElementById('upload-button');
+        const uploadSection = document.getElementById('upload-section');
+        const progressContainer = document.getElementById('progress-container');
+        const statusMessage = document.getElementById('status-message');
+        const spinner = document.getElementById('spinner');
+        const resultContainer = document.getElementById('result-container');
+        const pinDisplay = document.getElementById('pin');
+        const magnetLinkDisplay = document.getElementById('magnet-link');
+        const emailInput = document.getElementById('email-input');
+        const sendEmailButton = document.getElementById('send-email-button');
+        const emailSuccess = document.getElementById('email-success');
+        const fileInfoDisplay = document.getElementById('file-info');
+        
+        // Upload area interactions
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+        
+        function handleFileSelect(file) {
+            selectedFile = file;
+            uploadArea.querySelector('h3').textContent = `Selected: ${file.name}`;
+            uploadArea.querySelector('p').textContent = `Size: ${formatFileSize(file.size)}`;
+            uploadButton.style.display = 'inline-block';
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+            if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
+            return (bytes / 1073741824).toFixed(2) + ' GB';
+        }
+        
+        uploadButton.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            // Show progress
+            uploadSection.style.display = 'none';
+            progressContainer.style.display = 'block';
+            spinner.style.display = 'block';
+            statusMessage.className = 'status-message scanning';
+            statusMessage.textContent = '🔍 Scanning file for malware...';
+            
+            try {
+                // Upload file to backend for scanning
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('/transfer/p2p', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'rejected') {
+                    throw new Error('File rejected: ' + data.reason);
+                }
+                
+                // File approved, display results
+                currentPin = data.pin;
+                currentMagnetLink = data.magnet_link;
+                
+                spinner.style.display = 'none';
+                statusMessage.className = 'status-message success';
+                statusMessage.textContent = '✅ File scanned and approved!';
+                
+                // Show result section
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                    
+                    pinDisplay.textContent = currentPin;
+                    magnetLinkDisplay.textContent = currentMagnetLink;
+                    
+                    fileInfoDisplay.innerHTML = `
+                        <strong>File:</strong> ${data.filename}<br>
+                        <strong>Size:</strong> ${formatFileSize(data.size_bytes)}<br>
+                        <strong>Expires in:</strong> ${Math.floor(data.expires_in_seconds / 60)} minutes
+                    `;
+                    
+                    // Start seeding with WebTorrent
+                    startSeeding();
+                }, 1000);
+                
+            } catch (error) {
+                spinner.style.display = 'none';
+                statusMessage.className = 'status-message error';
+                statusMessage.textContent = '❌ Error: ' + error.message;
+            }
+        });
+        
+        function startSeeding() {
+            // Initialize WebTorrent client
+            wtClient = new WebTorrent();
+            
+            // Create torrent from file and start seeding
+            wtClient.seed(selectedFile, {
+                announce: [currentMagnetLink.match(/tr=([^&]+)/)?.[1]]
+            }, (torrent) => {
+                console.log('Seeding torrent:', torrent.infoHash);
+                console.log('Magnet URI:', torrent.magnetURI);
+            });
+        }
+        
+        // Copy buttons
+        document.getElementById('copy-magnet').addEventListener('click', () => {
+            navigator.clipboard.writeText(currentMagnetLink);
+            alert('Magnet link copied to clipboard!');
+        });
+        
+        document.getElementById('copy-pin').addEventListener('click', () => {
+            navigator.clipboard.writeText(currentPin);
+            alert('PIN copied to clipboard!');
+        });
+        
+        // Send email
+        sendEmailButton.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+            
+            sendEmailButton.disabled = true;
+            sendEmailButton.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch('/transfer/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pin: currentPin,
+                        email: email
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.sent) {
+                    emailSuccess.textContent = `✅ Email sent successfully to ${email}`;
+                    emailSuccess.style.display = 'block';
+                    emailInput.value = '';
+                } else {
+                    throw new Error('Failed to send email');
+                }
+            } catch (error) {
+                alert('Error sending email: ' + error.message);
+            } finally {
+                sendEmailButton.disabled = false;
+                sendEmailButton.textContent = 'Send Email';
+            }
+        });
+        
+        // Send another file
+        document.getElementById('send-another').addEventListener('click', () => {
+            if (wtClient) {
+                wtClient.destroy();
+                wtClient = null;
+            }
+            
+            selectedFile = null;
+            currentPin = null;
+            currentMagnetLink = null;
+            
+            uploadSection.style.display = 'block';
+            resultContainer.style.display = 'none';
+            uploadButton.style.display = 'none';
+            
+            uploadArea.querySelector('h3').textContent = 'Drag & Drop File Here';
+            uploadArea.querySelector('p').textContent = 'or click to browse';
+            fileInput.value = '';
+        });
+    </script>
+</body>
+</html>
