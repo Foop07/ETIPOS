@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <title>etipos — secure relay</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ETIPOS P2P" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <div class="shell">
+
+    <header class="topbar">
+      <div class="brand">
+        <h1 class="brand-name">etipos</h1>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Mode">
+        <button class="tab active" id="tabSend" type="button" role="tab" aria-selected="true">Send</button>
+        <button class="tab" id="tabReceive" type="button" role="tab" aria-selected="false">Receive</button>
+      </nav>
+
+      <button class="status" id="healthPill" type="button" title="Check engine status">
+        <span class="status-dot" id="healthDot"></span>
+        <span id="healthText">checking</span>
+      </button>
+    </header>
+
+    <main class="main">
+
+      <!-- ============ SEND ============ -->
+      <section class="panel" id="panelSend">
+
+        <div class="panel-head">
+          <h2 class="panel-title">Send a file</h2>
+          <p class="panel-sub">Scanned locally, then released to an in-memory vault for 5 minutes.</p>
+        </div>
+
+        <!-- Picker -->
+        <div class="dropzone" id="dropzone" tabindex="0" role="button"
+             aria-label="Choose a file to scan">
+          <input type="file" id="fileInput" hidden />
+          <svg class="dz-icon" width="30" height="30" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <p class="dz-main" id="dropzoneMain">Drop a file here, or tap to browse</p>
+          <p class="dz-hint">Any type. Nothing leaves this network.</p>
+        </div>
+
+        <!-- File chosen -->
+        <div class="filebar hidden" id="filebar">
+          <div class="filebar-info">
+            <span class="filebar-name" id="fileName">—</span>
+            <span class="filebar-size" id="fileSize">—</span>
+          </div>
+          <div class="filebar-actions">
+            <button class="btn btn-primary" id="btnScan" type="button">Analyse</button>
+            <button class="btn btn-ghost" id="btnClear" type="button" aria-label="Remove file">Clear</button>
+          </div>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress hidden" id="progress">
+          <div class="progress-head">
+            <span class="progress-title" id="progressTitle">Analysing</span>
+            <span class="progress-count" id="progressCount">0 / 6</span>
+          </div>
+
+          <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar">            <div class="bar-fill" id="barFill"></div>
+          </div>
+
+          <ol class="steps" id="steps"></ol>
+        </div>
+
+        <!-- Result -->
+        <div class="result hidden" id="result">
+          <div class="result-top">
+            <span class="verdict" id="verdictBadge">—</span>
+            <p class="result-reason" id="resultReason">—</p>
+          </div>
+
+          <dl class="facts hidden" id="facts"></dl>
+
+          <!-- Approved credential -->
+          <div class="credential hidden" id="credential">
+            <div class="qr-wrap">
+              <img id="qrImage" alt="Transfer QR code" />
+            </div>
+            <div class="cred-body">
+              <span class="cred-label">Access code</span>
+              <p class="pin" id="pinDisplay">------</p>
+              <p class="cred-timer" id="credTimer">Expires in 5:00</p>
+              <div class="cred-actions">
+                <button class="btn btn-primary" id="btnCopyLink" type="button">Copy link</button>
+                <button class="btn btn-ghost" id="btnNewFile" type="button">New file</button>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-ghost btn-block hidden" id="btnRetry" type="button">Try another file</button>
+        </div>
+
+      </section>
+
+      <!-- ============ RECEIVE ============ -->
+      <section class="panel hidden" id="panelReceive">
+
+        <div class="panel-head">
+          <h2 class="panel-title">Receive a file</h2>
+          <p class="panel-sub">Enter the 6-digit code from the sender. The file is erased from the vault as soon as it is served.</p>
+        </div>
+
+        <div class="pin-fields" id="pinFields">
+          <input class="pin-cell" id="d1" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="Digit 1" />
+          <input class="pin-cell" id="d2" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 2" />
+          <input class="pin-cell" id="d3" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 3" />
+          <span class="pin-sep" aria-hidden="true">—</span>
+          <input class="pin-cell" id="d4" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 4" />
+          <input class="pin-cell" id="d5" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 5" />
+          <input class="pin-cell" id="d6" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 6" />
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btnDownload" type="button" disabled>Download file</button>
+
+        <p class="notice hidden" id="receiveAlert" role="status">Invalid or expired code.</p>
+
+      </section>
+
+    </main>
+
+    <footer class="foot">
+      <span>Local only</span>
+      <span aria-hidden="true">·</span>
+      <span id="footUrl">—</span>
+    </footer>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    // Register Service Worker for PWA functionality
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+          .then((registration) => {
+            console.log('Service Worker registered successfully:', registration.scope);
+          })
+          .catch((error) => {
+            console.error('Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
+</body>
+</html>
