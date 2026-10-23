@@ -1,0 +1,20 @@
+{
+  "name": "p2p-relay",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "bun check"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}
