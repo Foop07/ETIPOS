@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETIPOS P2P - Receive File</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .pin-input-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .pin-input {
+            width: 300px;
+            max-width: 100%;
+            padding: 20px;
+            font-size: 32px;
+            text-align: center;
+            border: 3px solid #667eea;
+            border-radius: 12px;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            margin: 20px auto;
+            display: block;
+        }
+        
+        .pin-input:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .file-info-section {
+            display: none;
+            margin: 30px 0;
+            padding: 30px;
+            background: #f8f9ff;
+            border-radius: 8px;
+        }
+        
+        .file-icon {
+            font-size: 64px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .file-details {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .file-details p {
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .file-details strong {
+            color: #667eea;
+        }
+        
+        .progress-container {
+            display: none;
+            margin: 30px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 40px;
+            background: #e0e0e0;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .download-stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .stat {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .status-message {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+        
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        
+        .status-message.warning {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+        
+        .peer-count {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+        }
+        
+        .peer-count-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .seeding-info {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+            display: none;
+        }
+        
+        .seeding-info.active {
+            display: block;
+        }
+        
+        .completed-section {
+            display: none;
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .completed-icon {
+            font-size: 72px;
+            margin: 20px 0;
+        }
+        
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📥 ETIPOS P2P - Receive File</h1>
+        <p class="subtitle">Download files securely via peer-to-peer transfer</p>
+        
+        <!-- PIN Input Section -->
+        <div class="pin-input-section" id="pin-input-section">
+            <p style="color: #666; margin-bottom: 20px;">Enter your 6-digit transfer PIN:</p>
+            <input type="text" 
+                   class="pin-input" 
+                   id="pin-input" 
+                   placeholder="000000" 
+                   maxlength="6"
+                   pattern="[0-9]{6}">
+            <div style="margin-top: 20px;">
+                <button id="fetch-button" type="submit">Continue</button>
+            </div>
+        </div>
+        
+        <!-- Status Messages -->
+        <div class="spinner" id="spinner"></div>
+        <div class="status-message" id="status-message"></div>
+        
+        <!-- File Info Section -->
+        <div class="file-info-section" id="file-info-section">
+            <div class="file-icon" id="file-icon">📄</div>
+            <div class="file-details" id="file-details"></div>
+            
+            <div class="action-buttons">
+                <button id="download-button">⬇️ Start Download</button>
+            </div>
+        </div>
+        
+        <!-- Progress Section -->
+        <div class="progress-container" id="progress-container">
+            <h3 style="text-align: center; color: #667eea;">Downloading...</h3>
+            
+            <div class="peer-count" id="peer-count">
+                <div class="peer-count-value" id="peer-count-value">0</div>
+                <div class="stat-label">Connected Peers</div>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill">0%</div>
+            </div>
+            
+            <div class="download-stats">
+                <div class="stat">
+                    <div class="stat-value" id="download-speed">0 KB/s</div>
+                    <div class="stat-label">Download Speed</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="downloaded-size">0 MB</div>
+                    <div class="stat-label">Downloaded</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="time-remaining">--:--</div>
+                    <div class="stat-label">Time Remaining</div>
+                </div>
+            </div>
+            
+            <div class="seeding-info" id="seeding-info">
+                🌱 You're seeding! Helping others download this file.
+            </div>
+        </div>
+        
+        <!-- Completed Section -->
+        <div class="completed-section" id="completed-section">
+            <div class="completed-icon">✅</div>
+            <h2 style="color: #28a745;">Download Complete!</h2>
+            <p>Your file has been downloaded successfully.</p>
+            
+            <div class="action-buttons">
+                <button id="download-again" style="background: #6c757d;">Download Another File</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
+    <script>
+        let wtClient = null;
+        let currentTorrent = null;
+        let transferData = null;
+        
+        // DOM elements
+        const pinInputSection = document.getElementById('pin-input-section');
+        const pinInput = document.getElementById('pin-input');
+        const fetchButton = document.getElementById('fetch-button');
+        const spinner = document.getElementById('spinner');
+        const statusMessage = document.getElementById('status-message');
+        const fileInfoSection = document.getElementById('file-info-section');
+        const fileIcon = document.getElementById('file-icon');
+        const fileDetails = document.getElementById('file-details');
+        const downloadButton = document.getElementById('download-button');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const peerCountValue = document.getElementById('peer-count-value');
+        const downloadSpeed = document.getElementById('download-speed');
+        const downloadedSize = document.getElementById('downloaded-size');
+        const timeRemaining = document.getElementById('time-remaining');
+        const seedingInfo = document.getElementById('seeding-info');
+        const completedSection = document.getElementById('completed-section');
+        
+        // Check for PIN in URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlPin = urlParams.get('pin');
+        if (urlPin) {
+            pinInput.value = urlPin;
+            // Auto-fetch if PIN is in URL
+            setTimeout(() => fetchTransferInfo(), 500);
+        }
+        
+        // Only allow numbers in PIN input
+        pinInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+        
+        // Enter key to submit
+        pinInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                fetchTransferInfo();
+            }
+        });
+        
+        fetchButton.addEventListener('click', fetchTransferInfo);
+        
+        async function fetchTransferInfo() {
+            const pin = pinInput.value.trim();
+            
+            if (pin.length !== 6) {
+                showStatus('error', 'Please enter a valid 6-digit PIN');
+                return;
+            }
+            
+            fetchButton.disabled = true;
+            spinner.style.display = 'block';
+            showStatus('info', 'Fetching transfer information...');
+            
+            try {
+                const response = await fetch(`/transfer/p2p/${pin}`);
+                
+                if (!response.ok) {
+                    throw new Error('Invalid or expired PIN');
+                }
+                
+                transferData = await response.json();
+                
+                spinner.style.display = 'none';
+                statusMessage.style.display = 'none';
+                
+                // Show file info
+                displayFileInfo();
+                
+            } catch (error) {
+                spinner.style.display = 'none';
+                showStatus('error', '❌ ' + error.message);
+                fetchButton.disabled = false;
+            }
+        }
+        
+        function displayFileInfo() {
+            pinInputSection.style.display = 'none';
+            fileInfoSection.style.display = 'block';
+            
+            // Set file icon based on type
+            const mimeType = transferData.content_type || '';
+            if (mimeType.includes('image')) fileIcon.textContent = '🖼️';
+            else if (mimeType.includes('video')) fileIcon.textContent = '🎥';
+            else if (mimeType.includes('audio')) fileIcon.textContent = '🎵';
+            else if (mimeType.includes('pdf')) fileIcon.textContent = '📕';
+            else if (mimeType.includes('zip') || mimeType.includes('compressed')) fileIcon.textContent = '📦';
+            else fileIcon.textContent = '📄';
+            
+            fileDetails.innerHTML = `
+                <p><strong>Filename:</strong> <span class="filename">${transferData.filename}</span></p>
+                <p><strong>Size:</strong> <span>${formatFileSize(transferData.size_bytes)}</span></p>
+                <p><strong>Type:</strong> <span>${transferData.content_type}</span></p>
+                <p><strong>Status:</strong> <span style="color: #28a745;">✅ ${transferData.verdict}</span></p>
+                <p><strong>Expires in:</strong> <span>${Math.floor(transferData.expires_in_seconds / 60)} minutes</span></p>
+            `;
+        }
+        
+        downloadButton.addEventListener('click', startDownload);
+        
+        async function startDownload() {
+            downloadButton.disabled = true;
+            fileInfoSection.style.display = 'none';
+            progressContainer.style.display = 'block';
+            
+            // Initialize WebTorrent client
+            wtClient = new WebTorrent();
+            
+            const magnetLink = transferData.magnet_link;
+            
+            console.log('Starting download with magnet link:', magnetLink);
+            
+            // Add torrent
+            wtClient.add(magnetLink, {
+                announce: [`ws://${window.location.hostname}:8001`]
+            }, (torrent) => {
+                currentTorrent = torrent;
+                console.log('Torrent added:', torrent.infoHash);
+                
+                // Update peer count
+                torrent.on('wire', (wire, addr) => {
+                    console.log('Connected to peer:', addr);
+                    updatePeerCount();
+                });
+                
+                // Update progress
+                const interval = setInterval(() => {
+                    if (!currentTorrent) {
+                        clearInterval(interval);
+                        return;
+                    }
+                    
+                    const progress = (torrent.progress * 100).toFixed(1);
+                    progressFill.style.width = progress + '%';
+                    progressFill.textContent = progress + '%';
+                    
+                    downloadSpeed.textContent = formatSpeed(torrent.downloadSpeed);
+                    downloadedSize.textContent = formatFileSize(torrent.downloaded);
+                    timeRemaining.textContent = formatTime(torrent.timeRemaining);
+                    
+                    updatePeerCount();
+                    
+                    // Show seeding info when download starts
+                    if (torrent.progress > 0) {
+                        seedingInfo.classList.add('active');
+                    }
+                }, 1000);
+                
+                // Download complete
+                torrent.on('done', () => {
+                    clearInterval(interval);
+                    console.log('Download complete!');
+                    
+                    progressContainer.style.display = 'none';
+                    completedSection.style.display = 'block';
+                    
+                    // Trigger file download
+                    torrent.files[0].getBlobURL((err, url) => {
+                        if (err) {
+                            console.error('Error getting blob URL:', err);
+                            return;
+                        }
+                        
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = transferData.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        
+                        // Keep seeding for a while
+                        showStatus('success', '✅ Download complete! You\'re now seeding to help others.');
+                    });
+                });
+                
+                torrent.on('error', (err) => {
+                    console.error('Torrent error:', err);
+                    showStatus('error', '❌ Download error: ' + err.message);
+                });
+            });
+        }
+        
+        function updatePeerCount() {
+            if (currentTorrent) {
+                peerCountValue.textContent = currentTorrent.numPeers;
+            }
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+            if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
+            return (bytes / 1073741824).toFixed(2) + ' GB';
+        }
+        
+        function formatSpeed(bytesPerSecond) {
+            if (bytesPerSecond < 1024) return bytesPerSecond.toFixed(0) + ' B/s';
+            if (bytesPerSecond < 1048576) return (bytesPerSecond / 1024).toFixed(2) + ' KB/s';
+            return (bytesPerSecond / 1048576).toFixed(2) + ' MB/s';
+        }
+        
+        function formatTime(seconds) {
+            if (!seconds || seconds === Infinity) return '--:--';
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showStatus(type, message) {
+            statusMessage.className = 'status-message ' + type;
+            statusMessage.textContent = message;
+        }
+        
+        // Download another file
+        document.getElementById('download-again').addEventListener('click', () => {
+            if (wtClient) {
+                wtClient.destroy();
+                wtClient = null;
+            }
+            
+            currentTorrent = null;
+            transferData = null;
+            
+            pinInput.value = '';
+            pinInputSection.style.display = 'block';
+            fileInfoSection.style.display = 'none';
+            progressContainer.style.display = 'none';
+            completedSection.style.display = 'none';
+            statusMessage.style.display = 'none';
+            seedingInfo.classList.remove('active');
+            fetchButton.disabled = false;
+        });
+    </script>
+</body>
+</html>
