@@ -11,6 +11,7 @@ def test_p2p_transfer_creates_torrent_and_returns_magnet(monkeypatch):
     # Mock analyzer to return APPROVED status
     def mock_triage(contents, filename):
         return {
+            "status": "APPROVED",
             "verdict": "APPROVED",
             "tier1_magic": {"mime_type": "application/pdf"},
             "tier2_clamav": {"status": "CLEAN"},
@@ -123,3 +124,28 @@ def test_p2p_status_returns_404_for_invalid_pin():
     response = client.get("/transfer/p2p/999999")
     
     assert response.status_code == 404
+
+
+def test_p2p_transfer_rejects_file_at_2gb_limit(monkeypatch):
+    # Check the boundary using the configured constant without allocating 2GB.
+    import backend
+
+    monkeypatch.setattr(backend, "MAX_P2P_FILE_BYTES", 4)
+    response = client.post(
+        "/transfer/p2p",
+        files={"file": ("large.bin", b"1234", "application/octet-stream")},
+    )
+    assert response.status_code == 413
+
+
+def test_p2p_transfer_rejects_non_approved_scan(monkeypatch):
+    monkeypatch.setattr(
+        "analyzer.run_full_triage",
+        lambda contents, filename: {"status": "REJECTED", "verdict": "MALICIOUS"},
+    )
+    response = client.post(
+        "/transfer/p2p",
+        files={"file": ("bad.bin", b"content", "application/octet-stream")},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"

@@ -4,12 +4,16 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "typecheck": "bun check"
+    "typecheck": "bun check",
+    "test": "bun test test/tracker.test.ts",
+    "test:e2e": "npx playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/bun": "latest",
     "@types/node": "^26.6.5",
-    "@types/ws": "^8.18.2"
+    "@types/ws": "^8.18.2",
+    "playwright": "^1.64.1"
   },
   "peerDependencies": {
     "typescript": "^7"

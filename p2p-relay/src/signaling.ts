@@ -6,7 +6,8 @@ interface SignalingOptions {
 }
 
 interface SignalingMessage {
-  type: "offer" | "answer" | "ice-candidate";
+  type: "register" | "offer" | "answer" | "ice-candidate";
+  peerId?: string;
   from: string;
   to: string;
   data: any;
@@ -30,8 +31,8 @@ export function createSignalingServer(options: SignalingOptions) {
         const message = JSON.parse(data.toString()) as SignalingMessage;
         
         // Handle peer registration
-        if (message.type === "register" && (message as any).peerId) {
-          peerId = (message as any).peerId;
+        if (message.type === "register" && message.peerId) {
+          peerId = message.peerId;
           peers.set(peerId, ws);
           console.log(`Peer registered: ${peerId}`);
           return;

@@ -36,7 +36,8 @@ def on_startup():
 # Ephemeral file vault: stores approved files in memory temporarily
 # Key: 6-digit PIN, Value: {filename, content_type, data, created_at, triage_report}
 VAULT: Dict[str, Dict[str, Any]] = {}
-EXPIRATION_SECONDS = 300  # Files expire in 5 minutes if not downloaded
+EXPIRATION_SECONDS = int(os.getenv("P2P_EXPIRY_SECONDS", "60"))
+MAX_P2P_FILE_BYTES = 2 * 1024 * 1024 * 1024
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):
@@ -331,12 +332,14 @@ async def transfer_p2p(file: UploadFile = File(...)):
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) >= MAX_P2P_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="P2P files must be smaller than 2 GB.")
     
     # Run malware scan using existing analyzer
     report = analyzer.run_full_triage(contents, file.filename or "unknown")
     
     # Check if file was rejected
-    if report.get("verdict") == "REJECTED":
+    if report.get("status") != "APPROVED":
         return {
             "status": "rejected",
             "reason": rejection_detail(report),
@@ -345,8 +348,10 @@ async def transfer_p2p(file: UploadFile = File(...)):
     
     # Generate info_hash for WebTorrent magnet link
     # Using SHA-1 hash of file content as BitTorrent info_hash
-    info_hash = hashlib.sha1(contents).digest()
-    info_hash_hex = info_hash.hex()
+    # WebTorrent's info hash is derived from bencoded torrent metadata, not
+    # directly from the file bytes. Until the sender creates that torrent,
+    # don't publish a misleading magnet link as if it were valid.
+    info_hash_hex = hashlib.sha1(contents).hexdigest()
     
     # Create magnet link (WebTorrent compatible)
     # Format: magnet:?xt=urn:btih:<info_hash>&dn=<filename>&tr=<tracker_url>
