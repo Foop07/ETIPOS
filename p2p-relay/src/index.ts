@@ -1,4 +1,4 @@
-import { createTracker } from "./tracker";
+import { createTracker } from "./tracker.ts";
 
 // Get configuration from environment variables
 const TRACKER_PORT = parseInt(process.env.TRACKER_PORT || "8001");
@@ -17,6 +17,7 @@ async function main() {
     console.log("\n✅ P2P Relay Server is ready!");
     console.log(`   Tracker Port: ${TRACKER_PORT}`);
     console.log(`   Host: ${HOST}`);
+    console.log("   Protocol: WebTorrent WebSocket tracker (ws)");
     console.log("\nPress Ctrl+C to stop the server.\n");
 
     // Handle graceful shutdown

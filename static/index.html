@@ -37,6 +37,27 @@
 
     <main class="main">
 
+      <!-- ============ OTP VERIFICATION SCREEN ============ -->
+      <section class="panel hidden" id="panelOtpAuth">
+        <div class="panel-head">
+          <h2 class="panel-title">Domain Access Required</h2>
+          <p class="panel-sub">Enter the 6-digit access OTP generated on the server terminal to unlock this gateway.</p>
+        </div>
+
+        <div class="pin-fields" id="otpFields">
+          <input class="pin-cell" id="o1" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="Digit 1" />
+          <input class="pin-cell" id="o2" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 2" />
+          <input class="pin-cell" id="o3" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 3" />
+          <span class="pin-sep" aria-hidden="true">—</span>
+          <input class="pin-cell" id="o4" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 4" />
+          <input class="pin-cell" id="o5" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 5" />
+          <input class="pin-cell" id="o6" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 6" />
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btnVerifyOtp" type="button" disabled>Unlock Gateway</button>
+        <p class="notice hidden" id="otpAlert" role="status" style="margin-top: 12px;"></p>
+      </section>
+
       <!-- ============ SEND ============ -->
       <section class="panel" id="panelSend">
 

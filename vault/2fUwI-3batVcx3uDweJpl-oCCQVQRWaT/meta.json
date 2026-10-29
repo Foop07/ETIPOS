@@ -1,0 +1,50 @@
+{
+  "token": "2fUwI-3batVcx3uDweJpl-oCCQVQRWaT",
+  "filename": "images.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 26461,
+  "created_at": 1793255240.214189,
+  "expires_at": 1793341640.214189,
+  "ttl_seconds": 86400,
+  "triage_report": {
+    "interesting_imports": [],
+    "status": "APPROVED",
+    "verdict": "SAFE",
+    "stage": "TIER_2_PASSED",
+    "file_info": {
+      "claimed_extension": "jpg",
+      "actual_type": "jpeg",
+      "mime_type": "image/jpeg",
+      "confidence": 100.0,
+      "is_spoofed": false,
+      "is_double_extension": false,
+      "is_executable": false
+    },
+    "entropy": 7.962,
+    "indicators": [],
+    "yara_matches": [],
+    "pdf_analysis": null,
+    "docx_analysis": null,
+    "xlsx_analysis": null,
+    "pptx_analysis": null,
+    "zip_analysis": null,
+    "image_analysis": {
+      "available": true,
+      "format": "JPEG",
+      "width": 447,
+      "height": 447,
+      "mode": "RGB",
+      "animated": false,
+      "frame_count": 1,
+      "metadata": {},
+      "urls": [],
+      "indicators": []
+    },
+    "svg_analysis": null,
+    "html_analysis": null,
+    "javascript_analysis": null,
+    "lief_analysis": null,
+    "clamav_status": "CLEAN",
+    "ai_triage": null
+  }
+}

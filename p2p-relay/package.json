@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "typecheck": "bun check",
+    "build:browser": "node scripts/copy-browser.mjs",
     "test": "bun test test/tracker.test.ts",
     "test:e2e": "npx playwright test"
   },
@@ -19,6 +20,10 @@
     "typescript": "^7"
   },
   "dependencies": {
+    "bittorrent-tracker": "11.2.3",
+    "create-torrent": "6.1.0",
+    "parse-torrent": "11.0.18",
+    "webtorrent": "2.8.4",
     "ws": "^8.22.0"
   }
 }

@@ -345,8 +345,8 @@
         </div>
     </div>
     
-    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
-    <script>
+    <script src="/static/vendor/webtorrent.min.js"></script>
+        <script>
         let wtClient = null;
         let currentTorrent = null;
         let transferData = null;
@@ -456,19 +456,20 @@
             fileInfoSection.style.display = 'none';
             progressContainer.style.display = 'block';
             
-            // Initialize WebTorrent client
-            wtClient = new WebTorrent();
-            
-            const magnetLink = transferData.magnet_link;
-            
-            console.log('Starting download with magnet link:', magnetLink);
-            
-            // Add torrent
-            wtClient.add(magnetLink, {
-                announce: [`ws://${window.location.hostname}:8001`]
-            }, (torrent) => {
+            try {
+                wtClient = new WebTorrent({ dht: false, tracker: true });
+                const metadataResponse = await fetch(`/transfer/p2p/${encodeURIComponent(transferData.pin)}`);
+                const metadata = await metadataResponse.json();
+                if (!metadataResponse.ok) throw new Error(metadata.detail || 'Transfer expired');
+                if (metadata.info_hash !== transferData.info_hash) throw new Error('Torrent info hash mismatch');
+
+                wtClient.add(metadata.magnet_link, (torrent) => {
                 currentTorrent = torrent;
-                console.log('Torrent added:', torrent.infoHash);
+                if (torrent.infoHash !== metadata.info_hash) {
+                    showStatus('error', 'Torrent metadata integrity check failed.');
+                    wtClient.destroy();
+                    return;
+                }
                 
                 // Update peer count
                 torrent.on('wire', (wire, addr) => {
@@ -499,20 +500,28 @@
                     }
                 }, 1000);
                 
-                // Download complete
-                torrent.on('done', () => {
+                    // Download complete; independently verify full-file SHA-256.
+                    torrent.on('done', () => {
                     clearInterval(interval);
                     console.log('Download complete!');
                     
                     progressContainer.style.display = 'none';
-                    completedSection.style.display = 'block';
-                    
-                    // Trigger file download
-                    torrent.files[0].getBlobURL((err, url) => {
+                    // Trigger file download only after matching backend SHA-256.
+                    torrent.files[0].arrayBuffer(async (err, buffer) => {
                         if (err) {
                             console.error('Error getting blob URL:', err);
                             return;
                         }
+
+                        const digest = await crypto.subtle.digest('SHA-256', buffer);
+                        const checksum = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+                        if (checksum !== metadata.sha256) {
+                            showStatus('error', 'Checksum mismatch; download was not saved.');
+                            return;
+                        }
+                        progressContainer.style.display = 'none';
+                        completedSection.style.display = 'block';
+                        const url = URL.createObjectURL(new Blob([buffer], { type: metadata.content_type }));
                         
                         const a = document.createElement('a');
                         a.href = url;
@@ -520,6 +529,7 @@
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
                         
                         // Keep seeding for a while
                         showStatus('success', '✅ Download complete! You\'re now seeding to help others.');
@@ -530,7 +540,11 @@
                     console.error('Torrent error:', err);
                     showStatus('error', '❌ Download error: ' + err.message);
                 });
-            });
+                });
+            } catch (error) {
+                showStatus('error', `Download failed: ${error.message}`);
+                downloadButton.disabled = false;
+            }
         }
         
         function updatePeerCount() {

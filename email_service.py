@@ -2,113 +2,187 @@ import smtplib
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import timedelta
+from typing import Dict, Any, Optional
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-EMAIL_FROM = os.getenv("EMAIL_FROM", f"ETIPOS <{SMTP_USER}>")
+SMTP_USER = os.getenv("SMTP_USER") or os.getenv("GMAIL_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD")
+EMAIL_FROM = os.getenv("EMAIL_FROM", f"ETIPOS Relay <{SMTP_USER}>" if SMTP_USER else "ETIPOS Relay")
 
 
-def send_transfer_email(to_email: str, magnet_link: str, pin: str, filename: str, expires_in_seconds: int) -> bool:
+def send_transfer_email(
+    to_email: str,
+    download_url: str,
+    filename: str,
+    size_bytes: int = 0,
+    expires_in_hours: int = 24,
+    sender_name: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Send an email with a P2P file transfer link.
-    
-    Args:
-        to_email: Recipient email address
-        magnet_link: WebTorrent magnet link
-        pin: 6-digit PIN for access
-        filename: Name of the file being transferred
-        expires_in_seconds: Time until the transfer expires
-    
-    Returns:
-        True if email sent successfully, False otherwise
+    Send an email with the secure direct download link.
+    Works with standard Gmail SMTP using an App Password.
     """
-    try:
-        # Calculate expiry time in human-readable format
-        if expires_in_seconds < 3600:
-            expiry_str = f"{expires_in_seconds // 60} minutes"
-        elif expires_in_seconds < 86400:
-            expiry_str = f"{expires_in_seconds // 3600} hours"
-        else:
-            expiry_str = f"{expires_in_seconds // 86400} days"
-        
-        # Build email message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"File Transfer: {filename}"
-        msg['From'] = EMAIL_FROM
-        msg['To'] = to_email
-        
-        # Plain text version
-        text_body = f"""
-ETIPOS File Transfer
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return {
+            "success": False,
+            "error": "SMTP_USER and SMTP_PASSWORD (or GMAIL_USER / GMAIL_APP_PASSWORD) not configured."
+        }
 
-Someone has sent you a file: {filename}
+    sender_display = sender_name or "Someone"
 
-Your PIN: {pin}
+    def format_size(bytes_val: int) -> str:
+        if bytes_val <= 0:
+            return "Unknown size"
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes_val < 1024.0:
+                return f"{bytes_val:.1f} {unit}"
+            bytes_val /= 1024.0
+        return f"{bytes_val:.1f} TB"
 
-Magnet Link: {magnet_link}
+    readable_size = format_size(size_bytes)
+    subject = f"[ETIPOS] {sender_display} sent you a secure file: {filename}"
 
-This transfer will expire in {expiry_str}.
+    text_body = f"""
+ETIPOS Secure File Transfer
 
-To download the file, use your PIN to access the transfer.
+{sender_display} has sent you a file: {filename}
+Size: {readable_size}
+Lifespan: {expires_in_hours} hours
+
+Download link:
+{download_url}
+
+This file was analyzed locally by ETIPOS zero-trust multi-tier security pipeline.
+The file will be securely deleted once downloaded or upon expiration.
 """
-        
-        # HTML version
-        html_body = f"""
-<!DOCTYPE html>
+
+    html_body = f"""<!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #0066cc; color: white; padding: 20px; text-align: center; }}
-        .content {{ background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; }}
-        .pin {{ font-size: 24px; font-weight: bold; color: #0066cc; text-align: center; padding: 15px; background: white; border: 2px solid #0066cc; margin: 20px 0; }}
-        .magnet {{ word-break: break-all; font-size: 12px; color: #666; background: #fff; padding: 10px; border: 1px solid #ddd; }}
-        .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
-    </style>
+  <meta charset="utf-8">
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0d0f12;
+      color: #e6edf3;
+      padding: 24px;
+      margin: 0;
+    }}
+    .card {{
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 28px;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #58a6ff;
+      background: rgba(56, 139, 253, 0.15);
+      border-radius: 20px;
+      margin-bottom: 16px;
+    }}
+    h2 {{
+      margin: 0 0 12px 0;
+      color: #f0f6fc;
+      font-size: 20px;
+    }}
+    .details {{
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 18px 0;
+    }}
+    .row {{
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }}
+    .row:last-child {{
+      margin-bottom: 0;
+    }}
+    .label {{
+      color: #8b949e;
+    }}
+    .val {{
+      color: #c9d1d9;
+      font-weight: 500;
+      word-break: break-all;
+    }}
+    .btn {{
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      background: #238636;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 14px 0;
+      border-radius: 6px;
+      margin: 24px 0 16px 0;
+      font-size: 15px;
+    }}
+    .footer {{
+      font-size: 12px;
+      color: #8b949e;
+      text-align: center;
+      margin-top: 20px;
+      line-height: 1.5;
+    }}
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🔒 ETIPOS File Transfer</h1>
-        </div>
-        <div class="content">
-            <p>Someone has sent you a file:</p>
-            <h2>{filename}</h2>
-            
-            <p><strong>Your PIN:</strong></p>
-            <div class="pin">{pin}</div>
-            
-            <p><strong>Magnet Link:</strong></p>
-            <div class="magnet">{magnet_link}</div>
-            
-            <p><strong>⏱️ Expires in:</strong> {expiry_str}</p>
-        </div>
-        <div class="footer">
-            <p>This is an automated message from ETIPOS Secure File Transfer.</p>
-            <p>Use your PIN to access the transfer before it expires.</p>
-        </div>
+  <div class="card">
+    <div class="badge">ETIPOS SECURE RELAY</div>
+    <h2>File Ready for Download</h2>
+    <p style="color: #8b949e; font-size: 14px; margin: 0 0 16px 0;">
+      <strong>{sender_display}</strong> shared a verified safe file with you.
+    </p>
+
+    <div class="details">
+      <div class="row"><span class="label">File name</span><span class="val">{filename}</span></div>
+      <div class="row"><span class="label">Size</span><span class="val">{readable_size}</span></div>
+      <div class="row"><span class="label">Expires in</span><span class="val">{expires_in_hours} hours</span></div>
     </div>
+
+    <a href="{download_url}" class="btn">Download File</a>
+
+    <div class="footer">
+      Link expires in {expires_in_hours} hours.<br>
+      Analyzed by ETIPOS Multi-Tier Security (Magika · ClamAV · Qwen AI)
+    </div>
+  </div>
 </body>
 </html>
 """
-        
-        # Attach both versions
-        msg.attach(MIMEText(text_body, 'plain'))
-        msg.attach(MIMEText(html_body, 'html'))
-        
-        # Send email via SMTP
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            if SMTP_USER and SMTP_PASSWORD:
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_FROM
+    msg["To"] = to_email
+
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
                 server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(EMAIL_FROM, to_email, msg.as_string())
-        
-        return True
-    
+                server.sendmail(SMTP_USER, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.sendmail(SMTP_USER, to_email, msg.as_string())
+        return {"success": True}
     except Exception as e:
-        print(f"Failed to send email: {e}")
-        return False
+        return {"success": False, "error": str(e)}

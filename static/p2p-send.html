@@ -249,6 +249,7 @@
     </style>
 </head>
 <body>
+    <script src="/static/vendor/webtorrent.min.js"></script>
     <div class="container">
         <h1>🌐 ETIPOS P2P File Transfer</h1>
         <p class="subtitle">Send files securely with peer-to-peer technology</p>
@@ -291,6 +292,11 @@
                 <strong>Magnet Link:</strong><br>
                 <span id="magnet-link"></span>
             </div>
+
+            <div class="magnet-link">
+                <strong>Receiver link:</strong><br>
+                <a id="receiver-link" target="_blank" rel="noopener"></a>
+            </div>
             
             <div style="text-align: center;">
                 <button class="copy-button" id="copy-magnet">📋 Copy Magnet Link</button>
@@ -318,6 +324,7 @@
         let selectedFile = null;
         let currentPin = null;
         let currentMagnetLink = null;
+        let currentReceiverUrl = null;
         let wtClient = null;
         
         // DOM elements
@@ -397,14 +404,15 @@
                 });
                 
                 const data = await response.json();
-                
-                if (data.status === 'rejected') {
-                    throw new Error('File rejected: ' + data.reason);
+                if (!response.ok) {
+                    const detail = data.detail;
+                    throw new Error(typeof detail === 'object' ? detail.message : (detail || 'Upload failed'));
                 }
                 
                 // File approved, display results
                 currentPin = data.pin;
                 currentMagnetLink = data.magnet_link;
+                currentReceiverUrl = data.receiver_url;
                 
                 spinner.style.display = 'none';
                 statusMessage.className = 'status-message success';
@@ -417,6 +425,8 @@
                     
                     pinDisplay.textContent = currentPin;
                     magnetLinkDisplay.textContent = currentMagnetLink;
+                    document.getElementById('receiver-link').href = currentReceiverUrl;
+                    document.getElementById('receiver-link').textContent = currentReceiverUrl;
                     
                     fileInfoDisplay.innerHTML = `
                         <strong>File:</strong> ${data.filename}<br>
@@ -424,8 +434,8 @@
                         <strong>Expires in:</strong> ${Math.floor(data.expires_in_seconds / 60)} minutes
                     `;
                     
-                    // Start seeding with WebTorrent
-                    startSeeding();
+                    // Backend generated the torrent from the scanned payload. A separate
+                    // WebTorrent seed service serves this exact metadata/file pair.
                 }, 1000);
                 
             } catch (error) {
@@ -434,19 +444,6 @@
                 statusMessage.textContent = '❌ Error: ' + error.message;
             }
         });
-        
-        function startSeeding() {
-            // Initialize WebTorrent client
-            wtClient = new WebTorrent();
-            
-            // Create torrent from file and start seeding
-            wtClient.seed(selectedFile, {
-                announce: [currentMagnetLink.match(/tr=([^&]+)/)?.[1]]
-            }, (torrent) => {
-                console.log('Seeding torrent:', torrent.infoHash);
-                console.log('Magnet URI:', torrent.magnetURI);
-            });
-        }
         
         // Copy buttons
         document.getElementById('copy-magnet').addEventListener('click', () => {
@@ -507,6 +504,7 @@
             selectedFile = null;
             currentPin = null;
             currentMagnetLink = null;
+            currentReceiverUrl = null;
             
             uploadSection.style.display = 'block';
             resultContainer.style.display = 'none';

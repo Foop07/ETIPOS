@@ -1,0 +1,39 @@
+{
+  "token": "yeXqO-niGf6piTGnCgCtVG7MgZ6fHXCV",
+  "filename": "Better Days To Come.flac",
+  "content_type": "audio/flac",
+  "size_bytes": 33549835,
+  "created_at": 1793272784.0024984,
+  "expires_at": 1793359184.0024984,
+  "ttl_seconds": 86400,
+  "triage_report": {
+    "interesting_imports": [],
+    "status": "APPROVED",
+    "verdict": "SAFE",
+    "stage": "TIER_2_PASSED",
+    "file_info": {
+      "claimed_extension": "flac",
+      "actual_type": "flac",
+      "mime_type": "audio/flac",
+      "confidence": 99.9,
+      "is_spoofed": false,
+      "is_double_extension": false,
+      "is_executable": false
+    },
+    "entropy": 7.997,
+    "indicators": [],
+    "yara_matches": [],
+    "pdf_analysis": null,
+    "docx_analysis": null,
+    "xlsx_analysis": null,
+    "pptx_analysis": null,
+    "zip_analysis": null,
+    "image_analysis": null,
+    "svg_analysis": null,
+    "html_analysis": null,
+    "javascript_analysis": null,
+    "lief_analysis": null,
+    "clamav_status": "CLEAN",
+    "ai_triage": null
+  }
+}

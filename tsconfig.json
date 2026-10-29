@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "None",
+    "outDir": "./static",
+    "rootDir": "./src",
+    "strict": false,
+    "noImplicitAny": false,
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
+    "skipLibCheck": true,
+    "noEmitOnError": false
+  },
+  "include": ["src/**/*"]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "etipos_prototype",
+  "version": "1.0.0",
+  "description": "ETIPOS Secure Local & Distance Relay",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
