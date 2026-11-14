@@ -187,7 +187,7 @@ def main():
     os.environ["P2P_EXPIRY_SECONDS"] = str(P2P_EXPIRY_SECONDS)
     os.environ["TRACKER_PORT"] = str(TRACKER_PORT)
 
-    # Generate random 6-digit access OTP for the session domain
+    # Generate random 6-digit access OTP for authorized file transfers
     session_otp = f"{secrets.randbelow(900000) + 100000}"
     os.environ["ETIPOS_ACCESS_OTP"] = session_otp
     
@@ -257,7 +257,7 @@ def main():
 
     print("\n" + "-" * 60)
     print("  FORTRESS IS ARMED & READY")
-    print(f"  > Access OTP (Enter on screen):  *** {session_otp} ***")
+    print(f"  > Transfer Passcode (Enter to Send):  *** {session_otp} ***")
     print(f"  > Connect your phone on the same Wi-Fi to:")
     print(f"    {portal_url}")
     print(f"  > Or access locally on this laptop:")

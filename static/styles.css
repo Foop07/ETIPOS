@@ -645,6 +645,33 @@ body.blurred .pin-fields {
   text-align: center;
 }
 
+/* Sender Passcode Authorization Gate */
+.sender-auth-gate {
+  margin-bottom: 18px;
+  padding: 18px 16px;
+  background: rgba(56, 189, 248, 0.05);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.sender-auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--info);
+  margin-bottom: 6px;
+}
+
+.sender-auth-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
 .biometric-gate-title {
   display: flex;
   align-items: center;

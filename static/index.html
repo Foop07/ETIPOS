@@ -37,33 +37,35 @@
 
     <main class="main">
 
-      <!-- ============ OTP VERIFICATION SCREEN ============ -->
-      <section class="panel hidden" id="panelOtpAuth">
-        <div class="panel-head">
-          <h2 class="panel-title">Domain Access Required</h2>
-          <p class="panel-sub">Enter the 6-digit access OTP generated on the server terminal to unlock this gateway.</p>
-        </div>
-
-        <div class="pin-fields" id="otpFields">
-          <input class="pin-cell" id="o1" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="Digit 1" />
-          <input class="pin-cell" id="o2" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 2" />
-          <input class="pin-cell" id="o3" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 3" />
-          <span class="pin-sep" aria-hidden="true">—</span>
-          <input class="pin-cell" id="o4" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 4" />
-          <input class="pin-cell" id="o5" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 5" />
-          <input class="pin-cell" id="o6" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 6" />
-        </div>
-
-        <button class="btn btn-primary btn-block" id="btnVerifyOtp" type="button" disabled>Unlock Gateway</button>
-        <p class="notice hidden" id="otpAlert" role="status" style="margin-top: 12px;"></p>
-      </section>
-
       <!-- ============ SEND ============ -->
       <section class="panel" id="panelSend">
 
         <div class="panel-head">
           <h2 class="panel-title">Send a file</h2>
           <p class="panel-sub">Scanned locally, then released to an in-memory vault for 5 minutes.</p>
+        </div>
+
+        <!-- Sender Passcode Gate (only needed when sending files) -->
+        <div class="sender-auth-gate hidden" id="senderAuthGate">
+          <div class="sender-auth-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Passcode Required to Send</span>
+          </div>
+          <p class="sender-auth-sub">Enter the 6-digit terminal passcode to authorize file transfer:</p>
+          <div class="pin-fields" id="otpFields">
+            <input class="pin-cell" id="o1" type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="Passcode Digit 1" />
+            <input class="pin-cell" id="o2" type="text" inputmode="numeric" maxlength="1" aria-label="Passcode Digit 2" />
+            <input class="pin-cell" id="o3" type="text" inputmode="numeric" maxlength="1" aria-label="Passcode Digit 3" />
+            <span class="pin-sep" aria-hidden="true">—</span>
+            <input class="pin-cell" id="o4" type="text" inputmode="numeric" maxlength="1" aria-label="Passcode Digit 4" />
+            <input class="pin-cell" id="o5" type="text" inputmode="numeric" maxlength="1" aria-label="Passcode Digit 5" />
+            <input class="pin-cell" id="o6" type="text" inputmode="numeric" maxlength="1" aria-label="Passcode Digit 6" />
+          </div>
+          <button class="btn btn-primary btn-block" id="btnVerifyOtp" type="button" disabled style="margin-top: 10px;">Authorize Sending</button>
+          <p class="notice hidden" id="otpAlert" role="status" style="margin-top: 10px;"></p>
         </div>
 
         <!-- Picker -->

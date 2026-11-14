@@ -42,8 +42,8 @@
     const pinDigits = [$("d1"), $("d2"), $("d3"), $("d4"), $("d5"), $("d6")];
     const btnDownload = $("btnDownload");
     const receiveAlert = $("receiveAlert");
-    // --- Domain OTP Verification Elements ---
-    const panelOtpAuth = $("panelOtpAuth");
+    // --- Sender Passcode Verification Elements ---
+    const senderAuthGate = $("senderAuthGate");
     const otpDigits = [$("o1"), $("o2"), $("o3"), $("o4"), $("o5"), $("o6")];
     const btnVerifyOtp = $("btnVerifyOtp");
     const otpAlert = $("otpAlert");
@@ -190,6 +190,8 @@
                 empty.focus();
             return;
         }
+        if (!requireSenderAuth())
+            return;
         if (selectedFile)
             startScan();
         else
@@ -217,12 +219,18 @@
         e.preventDefault();
         dropzone.classList.remove("drag");
         setMode("send");
+        if (!requireSenderAuth())
+            return;
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
             handleFile(e.dataTransfer.files[0]);
         }
     });
     btnClear.addEventListener("click", clearFile);
-    btnScan.addEventListener("click", startScan);
+    btnScan.addEventListener("click", () => {
+        if (!requireSenderAuth())
+            return;
+        startScan();
+    });
     // --- Progress rendering ---------------------------------------------------
     function setBar(percent, tone) {
         barFill.style.width = percent + "%";
@@ -275,6 +283,8 @@
     // --- Streaming scan -------------------------------------------------------
     async function startScan() {
         if (!selectedFile || activeStream)
+            return;
+        if (!requireSenderAuth())
             return;
         resetPanels();
         setBar(0, "");
@@ -823,8 +833,8 @@
         }
     }
     // Hook into receive panel to show biometric shield if available
-    // --- Domain Session OTP Gate ----------------------------------------------
-    let portalLocked = false;
+    // --- Sender Transfer Passcode Gate ---------------------------------------
+    let senderAuthorized = false;
     function getEnteredOtp() {
         return otpDigits.map((d) => d ? d.value.trim() : "").join("");
     }
@@ -839,45 +849,30 @@
             if (!res.ok)
                 return;
             const data = await res.json();
-            if (data.required && !data.authenticated) {
-                lockPortal();
+            if (!data.required || data.authenticated) {
+                senderAuthorized = true;
+                if (senderAuthGate)
+                    hide(senderAuthGate);
             }
             else {
-                unlockPortal();
+                senderAuthorized = false;
+                // Gate will show when user tries to send or select a file
             }
         }
         catch (_) {
-            // Offline fallback: don't block
+            // Offline fallback
         }
     }
-    function lockPortal() {
-        portalLocked = true;
-        if (panelSend)
-            hide(panelSend);
-        if (panelReceive)
-            hide(panelReceive);
-        if (tabSend)
-            hide(tabSend);
-        if (tabReceive)
-            hide(tabReceive);
-        if (pwaInstallBanner)
-            hide(pwaInstallBanner);
-        if (panelOtpAuth)
-            show(panelOtpAuth);
-        const empty = otpDigits.find((d) => d && !d.value);
-        if (empty)
-            empty.focus();
-    }
-    function unlockPortal() {
-        portalLocked = false;
-        if (panelOtpAuth)
-            hide(panelOtpAuth);
-        if (tabSend)
-            show(tabSend);
-        if (tabReceive)
-            show(tabReceive);
-        setMode(mode || "send");
-        applyUrlPin();
+    function requireSenderAuth() {
+        if (senderAuthorized)
+            return true;
+        if (senderAuthGate) {
+            show(senderAuthGate);
+            const empty = otpDigits.find((d) => d && !d.value);
+            if (empty)
+                empty.focus();
+        }
+        return false;
     }
     async function submitOtp() {
         const otp = getEnteredOtp();
@@ -896,25 +891,33 @@
                 body: JSON.stringify({ otp })
             });
             if (res.ok) {
+                senderAuthorized = true;
                 if (btnVerifyOtp)
-                    btnVerifyOtp.textContent = "Unlocked ✓";
+                    btnVerifyOtp.textContent = "Authorized ✓";
                 setTimeout(() => {
-                    unlockPortal();
+                    if (senderAuthGate)
+                        hide(senderAuthGate);
                     if (btnVerifyOtp) {
-                        btnVerifyOtp.textContent = "Unlock Gateway";
+                        btnVerifyOtp.textContent = "Authorize Sending";
                         btnVerifyOtp.disabled = false;
                     }
-                }, 400);
+                    if (selectedFile) {
+                        startScan();
+                    }
+                    else {
+                        fileInput.click();
+                    }
+                }, 300);
             }
             else {
                 const data = await res.json().catch(() => ({}));
                 if (otpAlert) {
-                    otpAlert.textContent = data.detail || "Invalid OTP code. Please check server terminal.";
+                    otpAlert.textContent = data.detail || "Invalid passcode. Check server terminal.";
                     otpAlert.className = "notice bad";
                     show(otpAlert);
                 }
                 if (btnVerifyOtp) {
-                    btnVerifyOtp.textContent = "Unlock Gateway";
+                    btnVerifyOtp.textContent = "Authorize Sending";
                     btnVerifyOtp.disabled = false;
                 }
                 otpDigits.forEach((c) => { if (c)
@@ -925,12 +928,12 @@
         }
         catch (e) {
             if (otpAlert) {
-                otpAlert.textContent = "Connection error while verifying OTP.";
+                otpAlert.textContent = "Connection error while verifying passcode.";
                 otpAlert.className = "notice bad";
                 show(otpAlert);
             }
             if (btnVerifyOtp) {
-                btnVerifyOtp.textContent = "Unlock Gateway";
+                btnVerifyOtp.textContent = "Authorize Sending";
                 btnVerifyOtp.disabled = false;
             }
         }

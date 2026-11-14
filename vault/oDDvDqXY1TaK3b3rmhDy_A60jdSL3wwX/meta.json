@@ -1,10 +1,10 @@
 {
-  "token": "wVxSilPZLt_GLvLJMZIhjhhsy7h99Twv",
-  "filename": "u.png",
+  "token": "oDDvDqXY1TaK3b3rmhDy_A60jdSL3wwX",
+  "filename": "Screenshot (280).png",
   "content_type": "image/png",
-  "size_bytes": 863673,
-  "created_at": 1793196897.0992465,
-  "expires_at": 1793283297.0992465,
+  "size_bytes": 1227100,
+  "created_at": 1794646900.0873315,
+  "expires_at": 1794733300.0873315,
   "ttl_seconds": 86400,
   "triage_report": {
     "interesting_imports": [],
@@ -20,7 +20,7 @@
       "is_double_extension": false,
       "is_executable": false
     },
-    "entropy": 7.994,
+    "entropy": 7.992,
     "indicators": [],
     "yara_matches": [],
     "pdf_analysis": null,
@@ -31,8 +31,8 @@
     "image_analysis": {
       "available": true,
       "format": "PNG",
-      "width": 1730,
-      "height": 1000,
+      "width": 1920,
+      "height": 1080,
       "mode": "RGBA",
       "animated": false,
       "frame_count": 1,

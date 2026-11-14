@@ -55,11 +55,19 @@ EXPIRATION_SECONDS = P2P_EXPIRY_SECONDS  # Backwards-compatible alias for P2P ca
 MAX_P2P_FILE_BYTES = 2 * 1024 * 1024 * 1024
 P2P_SEEDERS: Dict[str, Any] = {}
 
-# Session OTP for domain access verification
+# Session OTP for file send authorization
 def get_session_otp() -> str:
     return os.getenv("ETIPOS_ACCESS_OTP", "").strip()
 
 ACTIVE_PORTAL_SESSIONS: set = set()
+
+def verify_sender_authorized(request: Request) -> bool:
+    """Verifies that the client has validated the transfer OTP before uploading."""
+    otp = get_session_otp()
+    if not otp:
+        return True
+    session_token = request.cookies.get("etipos_session") or request.headers.get("X-Session-Token")
+    return bool(session_token and session_token in ACTIVE_PORTAL_SESSIONS)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):
@@ -186,9 +194,9 @@ def portal_qr():
 
 @app.get("/qr/{pin}")
 def pin_qr(pin: str):
-    """Generates a QR code image that directly opens the receiver tab on Phone B."""
+    """Generates a QR code image that directly opens the receiver portal."""
     base_url = get_public_or_local_base_url()
-    target_url = f"{base_url}/?pin={pin}"
+    target_url = f"{base_url}/"
     png_bytes = generate_qr_bytes(target_url)
     return Response(content=png_bytes, media_type="image/png")
 
@@ -256,7 +264,7 @@ def store_in_vault(
         "status": "APPROVED",
         "pin": pin,
         "qr_url": f"/qr/{pin}",
-        "receiver_url": f"{base_url}/?pin={pin}",
+        "receiver_url": f"{base_url}/",
         "expires_in_seconds": (
             LOCAL_TRANSFER_EXPIRY_SECONDS if transfer_type == "local" else P2P_EXPIRY_SECONDS
         ),
@@ -279,13 +287,16 @@ def rejection_detail(report: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.post("/transfer")
-async def transfer_file(file: UploadFile = File(...)):
+async def transfer_file(request: Request, file: UploadFile = File(...)):
     """
     Scans incoming payload. If SAFE, generates a 6-digit PIN and QR code for Phone B.
     If suspicious or malicious, rejects the transfer immediately.
 
     Use /transfer/stream instead for live per-tier progress updates.
     """
+    if not verify_sender_authorized(request):
+        raise HTTPException(status_code=401, detail="Authentication required: Enter the transfer passcode on screen to send.")
+
     cleanup_expired_vault_entries()
 
     contents = await file.read()
@@ -302,7 +313,7 @@ async def transfer_file(file: UploadFile = File(...)):
 
 
 @app.post("/transfer/stream")
-async def transfer_file_stream(file: UploadFile = File(...)):
+async def transfer_file_stream(request: Request, file: UploadFile = File(...)):
     """
     Server-Sent Events variant of /transfer.
 
@@ -311,6 +322,9 @@ async def transfer_file_stream(file: UploadFile = File(...)):
     The response is always HTTP 200 so the browser can read the stream body
     for both outcomes.
     """
+    if not verify_sender_authorized(request):
+        raise HTTPException(status_code=401, detail="Authentication required: Enter the transfer passcode on screen to send.")
+
     cleanup_expired_vault_entries()
 
     contents = await file.read()
@@ -428,6 +442,9 @@ async def transfer_p2p(request: Request, file: UploadFile = File(...)):
     P2P file transfer: Scans file, creates WebTorrent magnet link, stores in vault.
     Returns PIN and magnet link for peer-to-peer distribution.
     """
+    if not verify_sender_authorized(request):
+        raise HTTPException(status_code=401, detail="Authentication required: Enter the transfer passcode on screen to send.")
+
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -682,12 +699,15 @@ class NotifyEmailRequest(BaseModel):
 
 
 @app.post("/transfer/internet")
-async def transfer_file_internet(file: UploadFile = File(...), request: Request = None):
+async def transfer_file_internet(request: Request, file: UploadFile = File(...)):
     """
     Scans incoming payload via 3-tier security pipeline.
     If APPROVED, stores it in the persistent disk-backed vault with a 24-hour TTL
     and returns a secret token and global download URL.
     """
+    if not verify_sender_authorized(request):
+        raise HTTPException(status_code=401, detail="Authentication required: Enter the transfer passcode on screen to send.")
+
     vault_manager.cleanup_expired_vault()
 
     contents = await file.read()
@@ -853,9 +873,9 @@ async def get_tunnel_url():
 
 
 @app.post("/share-target")
-async def share_target_upload(file: UploadFile = File(...)):
+async def share_target_upload(request: Request, file: UploadFile = File(...)):
     """
     PWA Web Share Target handler. Android shares files straight here.
     """
-    return await transfer_file_internet(file)
+    return await transfer_file_internet(request, file)
 
